@@ -1,0 +1,116 @@
+{
+  "app": {
+    "name": "Astrolabe",
+    "subtitle": "星盘面板"
+  },
+  "home": {
+    "loading": "正在连接后端…",
+    "rpcStatus": "RPC 状态",
+    "lastPing": "最近 Pong",
+    "boardName": "看板",
+    "openSettings": "打开设置",
+    "empty": "看板还没有任何组件。点击下方按钮进入设置页，从右侧组件库拖一个组件到画布上吧。"
+  },
+  "settings": {
+    "title": "设置",
+    "back": "返回主页",
+    "comingSoon": "Phase 1 起将在此处提供完整的画布编辑、数据源管理、看板与系统设置。",
+    "hint": "从右侧组件库拖拽到画布；点击组件出现编辑 / 删除按钮。",
+    "scale": "缩放",
+    "selected": "已选",
+    "clipboard": "剪贴板",
+    "clipboardCount": "{n} 项",
+    "shortcuts": "快捷键：Ctrl/⌘ + 点击 多选 · Shift 范围 · 拖框选 · Ctrl/⌘ + C/V 复制粘贴 · Del 删除 · Esc 取消 · Ctrl/⌘ + A 全选",
+    "saving": "保存中…",
+    "tabPalette": "组件库",
+    "tabDatasource": "数据源",
+    "tabBoard": "看板设置",
+    "tabSystem": "系统设置",
+    "boardNote": "站点标题与明暗 / 壁纸主题请在「系统设置」中修改；此处仅保存画布网格粒度。",
+    "gridPx": "基础网格 (px)",
+    "saveGrid": "保存网格设置",
+    "systemSite": "站点与外观",
+    "siteTitle": "站点标题",
+    "boardTheme": "主题",
+    "themeDark": "深色（默认）",
+    "themeLight": "浅色",
+    "themeCustom": "自定义变量",
+    "themeCustomImage": "自定义（壁纸图）",
+    "customVarsHint": "自定义主题 CSS 变量（颜色字符串）：",
+    "wallpaperUploadHint": "上传 JPG / PNG / WebP 等（单文件 ≤ 32 MiB）。更大请填外链 URL。",
+    "wallpaperBusy": "上传中…（大图可能需数十秒，请勿关闭页面）",
+    "wallpaperUrl": "壁纸 URL",
+    "saveSiteTheme": "保存站点与主题",
+    "locale": "语言",
+    "localeZhCN": "简体中文",
+    "localeEnUS": "English",
+    "exportTitle": "配置导出",
+    "exportDesc": "导出当前看板、数据源、widget 配置为 JSON 文件，便于备份或迁移。",
+    "exportBusy": "导出中…",
+    "exportBtn": "导出 JSON",
+    "importTitle": "配置导入",
+    "importWarn": "导入将清空当前所有 widget 与数据源后重建，请先导出备份。",
+    "importDone": "导入完成：{ds} 个数据源 / {widgets} 个 widget",
+    "importSkipped": "跳过 {n} 个",
+    "importPick": "选择 JSON 配置文件",
+    "wallpaperPick": "选择壁纸图片",
+    "importConfirm": "导入将清空当前 widget 与数据源后重建，确定继续？",
+    "wallpaperThemeRequiresImage": "壁纸图主题需要上传图片或填写壁纸 URL。",
+    "wallpaperTooLarge": "壁纸需 ≤ {mb} MiB；更大请直接使用外链 URL。",
+    "wallpaperUploadOk": "上传成功。已填入壁纸 URL，请点击「保存站点与主题」使配置生效。",
+    "globalGlass": "全局毛玻璃",
+    "glassTintMode": "底色来源",
+    "glassTintMode_auto": "自动从背景图取色",
+    "glassTintMode_manual": "手动指定颜色",
+    "glassTintAutoHint": "保存后会从背景图采样一个柔化色，作为 Aero 风格玻璃底色。",
+    "glassTint": "玻璃底色",
+    "glassGlow": "外发光颜色",
+    "glassGlowPlaceholder": "留空则跟随玻璃底色"
+  },
+  "rpc": {
+    "connecting": "连接中",
+    "connected": "在线",
+    "disconnected": "已断开"
+  },
+  "weather": {
+    "wind": "风力",
+    "loading": "…"
+  },
+  "widget": {
+    "edit": "编辑",
+    "delete": "删除"
+  },
+  "appearance": {
+    "legend": "组件外观",
+    "skin": "皮肤",
+    "glass": "毛玻璃（自定义模糊）",
+    "solid": "纯色背景",
+    "blurPx": "模糊（px，1–64）",
+    "solidColor": "背景色（CSS 颜色）",
+    "solidPlaceholder": "#0f172a 或 rgba(0,0,0,.5)"
+  },
+  "themeFields": {
+    "bg_base": "背景色",
+    "glass_bg": "玻璃面板",
+    "glass_border": "玻璃边框",
+    "text_primary": "主文字",
+    "text_secondary": "次文字",
+    "status_ok": "正常",
+    "status_err": "故障",
+    "status_unknown": "未知",
+    "accent": "强调"
+  },
+  "cityPicker": {
+    "placeholder": "输入城市名或拼音筛选，如「杭州」或 hz",
+    "expand": "展开列表",
+    "clear": "清除",
+    "hintMatch": "匹配至多 {limit} 条，按拼音首字母分组",
+    "hintBrowse": "按拼音排序，至多展示 {limit} 条 · 请输入关键字缩小范围",
+    "noMatch": "无匹配城市，换个关键词试试"
+  },
+  "iconPicker": {
+    "pickUpload": "上传图标文件",
+    "uploading": "上传中…",
+    "tooLarge": "文件超过 1 MiB 上限"
+  }
+}

@@ -1,0 +1,193 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root,
+:root[data-theme='dark'] {
+  --astro-bg-base: #060a10;
+  --astro-glass-bg: rgba(18, 24, 34, 0.58);
+  --astro-glass-border: rgba(186, 204, 230, 0.12);
+  --astro-glass-highlight: rgba(255, 255, 255, 0.16);
+  --astro-glass-shadow: 0 18px 44px -24px rgba(0, 0, 0, 0.62);
+  --astro-glass-glow: 0 0 32px rgba(34, 211, 238, 0.12);
+  --astro-text-primary: #e8ecf3;
+  --astro-text-secondary: #8b97a8;
+  --astro-status-ok: #34d399;
+  --astro-status-err: #f87171;
+  --astro-status-unknown: #94a3b8;
+  --astro-accent: #22d3ee;
+  /* Native select: surface matches panel tone; popup uses accent for checked row. */
+  --astro-select-surface: color-mix(in srgb, var(--astro-bg-base) 96%, var(--astro-text-secondary));
+  --astro-select-option-highlight: color-mix(in srgb, var(--astro-accent) 28%, var(--astro-bg-base));
+  --astro-on-accent-text: #0a0f14;
+}
+
+:root[data-theme='light'] {
+  --astro-bg-base: #faf8f4;
+  --astro-glass-bg: rgba(255, 255, 255, 0.72);
+  --astro-glass-border: rgba(30, 41, 59, 0.1);
+  --astro-glass-highlight: rgba(255, 255, 255, 0.68);
+  --astro-glass-shadow: 0 18px 42px -26px rgba(15, 23, 42, 0.28);
+  --astro-glass-glow: 0 0 28px rgba(2, 132, 199, 0.1);
+  --astro-text-primary: #1e293b;
+  --astro-text-secondary: #64748b;
+  --astro-status-ok: #059669;
+  --astro-status-err: #dc2626;
+  --astro-status-unknown: #94a3b8;
+  --astro-accent: #0284c7;
+  --astro-select-surface: color-mix(in srgb, var(--astro-bg-base) 97%, var(--astro-text-secondary));
+  --astro-select-option-highlight: color-mix(in srgb, var(--astro-accent) 22%, var(--astro-bg-base));
+  --astro-on-accent-text: #ffffff;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--astro-bg-base);
+  color: var(--astro-text-primary);
+  font-family:
+    'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
+    Arial, 'Microsoft YaHei', sans-serif;
+  font-feature-settings: 'cv11', 'ss01';
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+:root[data-wallpaper='1'] body {
+  background-color: transparent;
+}
+
+:root[data-wallpaper='1']::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 130% 100% at 50% 40%,
+    transparent 48%,
+    rgba(2, 6, 12, 0.46) 100%
+  );
+}
+
+.astro-glass {
+  background: var(--astro-glass-bg);
+  backdrop-filter: blur(20px) saturate(170%);
+  -webkit-backdrop-filter: blur(20px) saturate(170%);
+  border: 1px solid var(--astro-glass-border);
+  border-radius: 12px;
+  box-shadow:
+    inset 0 1px 0 var(--astro-glass-highlight),
+    var(--astro-glass-shadow),
+    var(--astro-glass-glow);
+}
+
+/* Shared icon-ish control (toolbar, settings sidebar, etc.). */
+.astro-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    background-color 0.18s ease,
+    color 0.18s ease;
+}
+
+.astro-btn-icon:hover {
+  transform: scale(1.06);
+}
+
+.astro-btn-icon:active {
+  transform: scale(0.94);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .astro-btn-icon {
+    transition: none;
+  }
+
+  .astro-btn-icon:hover,
+  .astro-btn-icon:active {
+    transform: none;
+  }
+}
+
+/* Mobile: drop backdrop-filter; use opaque fill for GPU cost. */
+@media (max-width: 767px) {
+  .astro-glass {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: var(--astro-bg-base);
+    border-color: var(--astro-glass-border);
+  }
+
+  .settings-sidebar {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background-color: color-mix(in srgb, var(--astro-bg-base) 88%, var(--astro-glass-bg)) !important;
+  }
+}
+
+.astro-mono-num {
+  font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  /* tnum: tabular figures; zero: slashed zero for O/0 legibility. */
+  font-feature-settings: 'tnum', 'zero';
+  font-variant-numeric: tabular-nums slashed-zero;
+}
+
+/* Select stays readable on wallpaper / bg-transparent: solid surface; accent row in list. */
+select {
+  background-color: var(--astro-select-surface) !important;
+  color: var(--astro-text-primary);
+  border-radius: 0.375rem;
+}
+
+select:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--astro-accent) 55%, transparent);
+  outline-offset: 1px;
+}
+
+select option {
+  background-color: var(--astro-bg-base);
+  color: var(--astro-text-primary);
+}
+
+select option:hover,
+select option:focus {
+  background-color: var(--astro-select-option-highlight);
+  color: var(--astro-text-primary);
+}
+
+select option:checked {
+  background-color: var(--astro-accent);
+  color: var(--astro-on-accent-text);
+}
+
+/* Settings sidebar: stronger blur, higher opacity, light text shadow vs busy wallpaper. */
+.settings-sidebar {
+  backdrop-filter: blur(32px) saturate(185%);
+  -webkit-backdrop-filter: blur(32px) saturate(185%);
+  background-color: color-mix(in srgb, var(--astro-bg-base) 52%, var(--astro-glass-bg)) !important;
+}
+
+.settings-sidebar-nav button,
+.settings-sidebar-body {
+  text-shadow:
+    0 0 1px color-mix(in srgb, var(--astro-bg-base) 72%, transparent),
+    0 1px 2px rgba(0, 0, 0, 0.38);
+}
+
+:root[data-theme='light'] .settings-sidebar-nav button,
+:root[data-theme='light'] .settings-sidebar-body {
+  text-shadow:
+    0 0 1px color-mix(in srgb, var(--astro-bg-base) 80%, transparent),
+    0 1px 1px rgba(255, 255, 255, 0.9);
+}

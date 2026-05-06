@@ -1,0 +1,33 @@
+# Astrolabe 自托管 docker-compose 示例。
+#
+# - 单进程容器；首次启动会在 /data/.astrolabe_panel/ 自动生成 config.json + sqlite。
+# - 使用 named volume astrolabe-data 持久化全部状态；想换 host 路径直接改成 ./data:/data 即可。
+# - docker socket 是可选的：local 适配器无需，docker 适配器需要挂入读权限。
+#
+# 启动：docker compose up -d
+# 升级：docker compose pull && docker compose up -d
+# 备份：docker run --rm -v astrolabe-data:/data alpine tar czf - /data > backup.tgz
+
+services:
+  astrolabe:
+    image: ghcr.io/yourname/astrolabe:latest
+    # 想本地构建就把 image 那行改成：
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    container_name: astrolabe
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - astrolabe-data:/data
+      # 容器内 docker 适配器需要的 socket（可选；若不用 docker 数据源可注释掉）
+      # - /var/run/docker.sock:/var/run/docker.sock:ro
+    healthcheck:
+      test: ["CMD", "/astrolabe", "--version"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  astrolabe-data:

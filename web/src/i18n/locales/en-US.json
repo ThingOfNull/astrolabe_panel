@@ -1,0 +1,116 @@
+{
+  "app": {
+    "name": "Astrolabe",
+    "subtitle": "Astrolabe Panel"
+  },
+  "home": {
+    "loading": "Connecting to backend…",
+    "rpcStatus": "RPC status",
+    "lastPing": "Last pong",
+    "boardName": "Board",
+    "openSettings": "Open settings",
+    "empty": "Your board is empty. Open Settings and drag a widget from the palette."
+  },
+  "settings": {
+    "title": "Settings",
+    "back": "Back to home",
+    "comingSoon": "Full editing canvas, data source management and system settings will land starting in Phase 1.",
+    "hint": "Drag widgets from the palette onto the canvas. Click a widget to edit or delete it.",
+    "scale": "Scale",
+    "selected": "Selected",
+    "clipboard": "Clipboard",
+    "clipboardCount": "{n} items",
+    "shortcuts": "Shortcuts: Ctrl/⌘+click multi-select · Shift range · Marquee · Ctrl/⌘+C/V copy/paste · Del remove · Esc clear · Ctrl/⌘+A select all",
+    "saving": "Saving…",
+    "tabPalette": "Widgets",
+    "tabDatasource": "Data sources",
+    "tabBoard": "Board",
+    "tabSystem": "System",
+    "boardNote": "Site title and light/dark wallpaper are edited under System. Here you only change grid spacing.",
+    "gridPx": "Grid base (px)",
+    "saveGrid": "Save grid",
+    "systemSite": "Site and look",
+    "siteTitle": "Site title",
+    "boardTheme": "Theme",
+    "themeDark": "Dark",
+    "themeLight": "Light",
+    "themeCustom": "Custom CSS variables",
+    "themeCustomImage": "Wallpaper image",
+    "customVarsHint": "CSS color variables:",
+    "wallpaperUploadHint": "Upload JPG / PNG / WebP (≤ 32 MiB per file). Use a URL for larger files.",
+    "wallpaperBusy": "Uploading… (large files may take a while)",
+    "wallpaperUrl": "Wallpaper URL",
+    "saveSiteTheme": "Save site and theme",
+    "locale": "Language",
+    "localeZhCN": "简体中文",
+    "localeEnUS": "English",
+    "exportTitle": "Export config",
+    "exportDesc": "Download board, data sources, and widgets as one JSON bundle for backup.",
+    "exportBusy": "Exporting…",
+    "exportBtn": "Export JSON",
+    "importTitle": "Import config",
+    "importWarn": "Import replaces every widget and data source; export a backup first.",
+    "importDone": "Imported: {ds} data sources / {widgets} widgets",
+    "importSkipped": "Skipped {n}",
+    "importPick": "Choose JSON bundle",
+    "wallpaperPick": "Choose wallpaper",
+    "importConfirm": "Import wipes all widgets and data sources and rebuilds. Continue?",
+    "wallpaperThemeRequiresImage": "Wallpaper theme needs an uploaded image or URL.",
+    "wallpaperTooLarge": "Wallpaper must be ≤ {mb} MiB. Use an external URL for larger files.",
+    "wallpaperUploadOk": "Uploaded. Wallpaper URL filled in—click Save site and theme to apply.",
+    "globalGlass": "Global glass",
+    "glassTintMode": "Tint source",
+    "glassTintMode_auto": "Auto from wallpaper",
+    "glassTintMode_manual": "Manual color",
+    "glassTintAutoHint": "After saving, the app samples the wallpaper and softens that color for Aero-style glass.",
+    "glassTint": "Glass tint",
+    "glassGlow": "Outer glow",
+    "glassGlowPlaceholder": "Empty follows glass tint"
+  },
+  "rpc": {
+    "connecting": "Connecting",
+    "connected": "Online",
+    "disconnected": "Disconnected"
+  },
+  "weather": {
+    "wind": "Wind",
+    "loading": "…"
+  },
+  "widget": {
+    "edit": "Edit",
+    "delete": "Delete"
+  },
+  "appearance": {
+    "legend": "Widget look",
+    "skin": "Variant",
+    "glass": "Frosted glass (blur)",
+    "solid": "Solid fill",
+    "blurPx": "Blur px (1–64)",
+    "solidColor": "Fill color (CSS)",
+    "solidPlaceholder": "#0f172a or rgba(0,0,0,.5)"
+  },
+  "themeFields": {
+    "bg_base": "Background",
+    "glass_bg": "Glass panel",
+    "glass_border": "Glass border",
+    "text_primary": "Primary text",
+    "text_secondary": "Secondary text",
+    "status_ok": "OK",
+    "status_err": "Error",
+    "status_unknown": "Unknown",
+    "accent": "Accent"
+  },
+  "cityPicker": {
+    "placeholder": "Type city or pinyin, e.g. Hangzhou or hz",
+    "expand": "Open list",
+    "clear": "Clear",
+    "hintMatch": "Up to {limit} matches, grouped by letter",
+    "hintBrowse": "Sorted by pinyin, showing up to {limit} rows · type to narrow",
+    "noMatch": "No city matched. Try another keyword."
+  },
+  "iconPicker": {
+    "pickUpload": "Upload icon file",
+    "uploading": "Uploading…",
+    "tooLarge": "File exceeds 1 MiB limit"
+  }
+}
