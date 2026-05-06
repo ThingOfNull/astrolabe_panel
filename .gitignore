@@ -18,6 +18,7 @@ coverage.html
 *.out
 node_modules/
 .pnpm-store/
+__pycache__/
 pnpm-debug.log*
 npm-debug.log*
 /web/test-results/

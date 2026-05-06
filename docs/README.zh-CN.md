@@ -1,3 +1,5 @@
+<p align="center"><a href="../README.md"><strong>English documentation</strong></a></p>
+
 <p align="center">
   <img src="../imgs/logo.png" alt="Astrolabe 星盘面板 Logo" width="140" />
 </p>
@@ -30,8 +32,6 @@
 <p align="center"><sub><strong>设置</strong> — 编排组件与看板偏好</sub></p>
 
 **Astrolabe 星盘面板**是一款**高度自定义**的主页与轻量看板：磁吸网格画布上拖拽小组件，探活与书签并列，指标可来自**宿主机**、**Docker** 或 **Netdata REST**，把导航和日常监控收拢到同一套轻量界面里。
-
-[**English documentation**](../README.md)
 
 ## 星盘面板和其他home panel的区别？
 

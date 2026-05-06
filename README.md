@@ -1,3 +1,5 @@
+<p align="center"><a href="docs/README.zh-CN.md"><strong>简体中文 (Chinese documentation)</strong></a></p>
+
 <p align="center">
   <img src="imgs/logo.png" alt="Astrolabe Panel logo" width="140" />
 </p>
@@ -30,8 +32,6 @@
 <p align="center"><sub><strong>Settings</strong> — configure widgets and board preferences</sub></p>
 
 Astrolabe Panel is a **highly customizable**, lightweight homepage and board: drag widgets on a snap-to-grid canvas, keep probes next to bookmarks, and pull metrics from the **host**, **Docker**, or **Netdata REST**—navigation and everyday monitoring in one simple surface.
-
-[**简体中文 (Chinese documentation)**](docs/README.zh-CN.md)
 
 ## How is Astrolabe Panel different from other home panels?
 
