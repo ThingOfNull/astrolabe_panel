@@ -1,0 +1,115 @@
+/* =====================================================================
+ * Astrolabe design tokens
+ *
+ * Single source of truth for radius, elevation, typography scale, surface
+ * layers, and accent roles. Older "--astro-accent / --astro-glass-bg" vars
+ * remain here so existing components keep rendering; new work should prefer
+ * the scoped tokens below.
+ *
+ * Scale is intentionally small:
+ *  - radius × 5  (xs → pill)
+ *  - elev   × 4  (0 → 3)
+ *  - fs     × 6  (xs → display)
+ *  - surface × 2 (widget board vs overlay)
+ *  - accent × 3  (brand / interactive / selection)
+ *
+ * Every visual decision below five tokens either fits a token or is a bug.
+ * ===================================================================== */
+
+:root,
+:root[data-theme='dark'] {
+  /* Radius */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 9999px;
+
+  /* Typography scale (px). Inter's 13/15 axis beats 12/14 for UI density. */
+  --fs-xs: 11px;
+  --fs-sm: 13px;
+  --fs-base: 15px;
+  --fs-lg: 18px;
+  --fs-xl: 24px;
+  --fs-display: 42px;
+
+  /* Line heights pair with fs-*. */
+  --lh-tight: 1.15;
+  --lh-normal: 1.45;
+  --lh-relaxed: 1.65;
+
+  /* Surfaces: ambient widget chrome (surface-1) vs floating overlays (surface-2).
+     Widget boards read as solid frosted glass; modals/tooltips read as the
+     airier glass originally applied everywhere. */
+  --astro-surface-1: rgba(18, 24, 34, 0.72);
+  --astro-surface-2: rgba(18, 24, 34, 0.45);
+  --astro-surface-blur-1: 14px;
+  --astro-surface-blur-2: 26px;
+
+  /* Accent roles */
+  --astro-accent-brand: var(--astro-accent);
+  --astro-accent-interactive: var(--astro-accent);
+  --astro-accent-selection: var(--astro-accent);
+
+  /* Foreground used on top of accent backgrounds (primary CTA text). */
+  --astro-on-accent-text: #0b121a;
+
+  /* Elevation: stacked from quiet (level-0 outline) to loud (level-3 modal).
+     Inner highlight encodes the physical feel of glass catching light. */
+  --elev-0:
+    0 0 0 1px var(--astro-glass-border);
+  --elev-1:
+    0 1px 0 var(--astro-glass-highlight) inset,
+    0 2px 8px -4px rgba(0, 0, 0, 0.3);
+  --elev-2:
+    0 1px 0 var(--astro-glass-highlight) inset,
+    0 10px 28px -12px rgba(0, 0, 0, 0.45);
+  --elev-3:
+    0 1px 0 var(--astro-glass-highlight) inset,
+    0 24px 60px -20px rgba(0, 0, 0, 0.55);
+}
+
+:root[data-theme='light'] {
+  --astro-surface-1: rgba(255, 255, 255, 0.82);
+  --astro-surface-2: rgba(255, 255, 255, 0.62);
+
+  --astro-accent-brand: var(--astro-accent);
+  --astro-accent-interactive: var(--astro-accent);
+  --astro-accent-selection: var(--astro-accent);
+  --astro-on-accent-text: #f8fafc;
+
+  --elev-1:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 2px 6px -3px rgba(15, 23, 42, 0.08);
+  --elev-2:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 10px 24px -12px rgba(15, 23, 42, 0.15);
+  --elev-3:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 24px 48px -20px rgba(15, 23, 42, 0.22);
+}
+
+/* Ghost variant: no chrome. Use on decorative widgets (dividers, text labels,
+   clock, weather) so the canvas breathes instead of looking like a slide deck
+   of floating panels. */
+.astro-glass--ghost {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Two glass layers — widget board (default) and overlay. Applied via modifiers
+   so existing `.astro-glass` callsites behave unchanged unless opted in. */
+.astro-glass--surface-1 {
+  background: var(--astro-surface-1);
+  backdrop-filter: blur(var(--astro-surface-blur-1)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--astro-surface-blur-1)) saturate(160%);
+}
+
+.astro-glass--surface-2 {
+  background: var(--astro-surface-2);
+  backdrop-filter: blur(var(--astro-surface-blur-2)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--astro-surface-blur-2)) saturate(180%);
+}
