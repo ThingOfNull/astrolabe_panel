@@ -4,6 +4,8 @@
 //   - custom: use theme_custom JSON as CSS variable overrides;
 //   - custom_image: use wallpaper plus auto/manual Aero glass tint.
 
+import { notifyThemeChanged } from './useEChartsTheme';
+
 export type ThemeKind = 'dark' | 'light' | 'custom' | 'custom_image';
 export type GlassTintMode = 'auto' | 'manual';
 
@@ -22,9 +24,19 @@ export interface CustomThemeVars {
   accent?: string;
   glass_tint_mode?: GlassTintMode;
   glass_tint?: string;
+  /**
+   * Pre-computed Aero glass tint baked at upload time by the backend so the
+   * SPA does not have to re-extract the wallpaper on every theme application.
+   * Auto mode prefers this; missing values fall through to localStorage cache
+   * and finally client-side extraction.
+   */
+  glass_tint_precomputed?: ExtractedTint;
 }
 
-type ThemeCSSKey = Exclude<keyof CustomThemeVars, 'glass_tint_mode' | 'glass_tint'>;
+type ThemeCSSKey = Exclude<
+  keyof CustomThemeVars,
+  'glass_tint_mode' | 'glass_tint' | 'glass_tint_precomputed'
+>;
 
 const VAR_MAP: Record<ThemeCSSKey, string> = {
   bg_base: '--astro-bg-base',
@@ -90,6 +102,7 @@ export function applyTheme(
     }
     applyCustomVariables(root, parsed);
     applyCustomImageGlass(root, parsed, resolvedURL, seq);
+    notifyThemeChanged();
     return;
   }
 
@@ -97,10 +110,12 @@ export function applyTheme(
   root.setAttribute('data-theme', safeKind);
 
   if (safeKind !== 'custom') {
+    notifyThemeChanged();
     return;
   }
 
   applyCustomVariables(root, parsed);
+  notifyThemeChanged();
 }
 
 function applyCustomVariables(root: HTMLElement, parsed: CustomThemeVars): void {
@@ -130,11 +145,57 @@ function applyCustomImageGlass(
     return;
   }
 
+  // 1. Server-precomputed tint shipped with the wallpaper upload response.
+  const pre = parsed.glass_tint_precomputed;
+  if (pre && pre.glassBg) {
+    const withManualGlow = manualGlow !== ''
+      ? { ...pre, glow: colorWithAlpha(manualGlow, 0.28) }
+      : pre;
+    setGlassTint(root, withManualGlow);
+    return;
+  }
+
+  // 2. Browser cache (keyed by wallpaper URL).
+  const cached = readCachedTint(wallpaperURL);
+  if (cached) {
+    const withManualGlow = manualGlow !== ''
+      ? { ...cached, glow: colorWithAlpha(manualGlow, 0.28) }
+      : cached;
+    setGlassTint(root, withManualGlow);
+    return;
+  }
+
+  // 3. Fallback: extract on the client, then persist for next reload.
   void extractWallpaperTint(wallpaperURL).then((tint) => {
     if (seq !== themeApplySeq || tint === null) return;
+    writeCachedTint(wallpaperURL, tint);
     const withManualGlow = manualGlow !== '' ? { ...tint, glow: colorWithAlpha(manualGlow, 0.28) } : tint;
     setGlassTint(root, withManualGlow);
   });
+}
+
+const TINT_CACHE_PREFIX = 'astrolabe.tint.';
+
+function readCachedTint(url: string): ExtractedTint | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(TINT_CACHE_PREFIX + url);
+    if (!raw) return null;
+    const v = JSON.parse(raw) as ExtractedTint;
+    if (v && typeof v.glassBg === 'string' && v.glassBg !== '') return v;
+  } catch {
+    // ignore corrupt cache
+  }
+  return null;
+}
+
+function writeCachedTint(url: string, tint: ExtractedTint): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(TINT_CACHE_PREFIX + url, JSON.stringify(tint));
+  } catch {
+    // quota or private mode: silently skip
+  }
 }
 
 function setGlassTint(root: HTMLElement, tint: ExtractedTint): void {
@@ -142,6 +203,9 @@ function setGlassTint(root: HTMLElement, tint: ExtractedTint): void {
   root.style.setProperty('--astro-glass-border', tint.border);
   root.style.setProperty('--astro-glass-glow', tint.glow);
   root.style.setProperty('--astro-glass-highlight', tint.highlight);
+  // Broadcast so ECharts-backed widgets refresh; fires whether the caller
+  // used manual tint (sync path) or async wallpaper extraction.
+  notifyThemeChanged();
 }
 
 function tintFromColor(color: string, glowColor: string): ExtractedTint {

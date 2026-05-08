@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Icon } from '@iconify/vue';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 
 import type { Widget } from '@/canvas/types';
 
@@ -11,6 +12,8 @@ const props = defineProps<{
   interactive: boolean;
   focusKey?: number;
 }>();
+
+const { t } = useI18n();
 
 const STORAGE_KEY = 'astrolabe.search.engineId';
 
@@ -158,7 +161,7 @@ const dropdownStyle = computed(() => ({
           :width="engineIconSize"
           :height="engineIconSize"
         />
-        <span>{{ currentEngine?.label ?? '搜索' }}</span>
+        <span>{{ currentEngine?.label ?? t('search.defaultButton') }}</span>
         <Icon
           icon="mdi:chevron-down"
           :width="chevronIconSize"
@@ -191,7 +194,7 @@ const dropdownStyle = computed(() => ({
       ref="inputRef"
       v-model="query"
       type="search"
-      placeholder="按 Ctrl+K 聚焦…"
+      :placeholder="t('search.focusPlaceholder')"
       class="flex-1 rounded-md border border-[color:var(--astro-glass-border)] bg-transparent focus:outline-none focus:ring-1 focus:ring-[color:var(--astro-accent)]"
       :style="inputStyle"
     >
@@ -200,7 +203,7 @@ const dropdownStyle = computed(() => ({
       class="rounded-md border border-[color:var(--astro-glass-border)] hover:bg-white/5"
       :style="submitStyle"
     >
-      搜索
+      {{ t('search.button') }}
     </button>
   </form>
 </template>

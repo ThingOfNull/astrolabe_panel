@@ -5,6 +5,8 @@ import { useRouter } from 'vue-router';
 
 import { getRpc } from '@/api/jsonrpc';
 import Canvas from '@/canvas/Canvas.vue';
+import WidgetTile from '@/canvas/WidgetTile.vue';
+import { responsiveModeOf } from '@/canvas/responsive';
 import { DESIGN_GRID_HEIGHT, DESIGN_GRID_WIDTH } from '@/canvas/types';
 import type { Widget } from '@/canvas/types';
 import { useViewportMode } from '@/composables/useViewportMode';
@@ -23,8 +25,6 @@ const probeStore = useProbeStore();
 const searchFocusKey = ref(0);
 
 let unsubscribe: (() => void) | null = null;
-let widgetTimer: ReturnType<typeof setInterval> | null = null;
-let probeTimer: ReturnType<typeof setInterval> | null = null;
 
 const basePx = computed(() => boardStore.board?.grid_base_unit ?? 10);
 const { mode, scale } = useViewportMode(() => basePx.value);
@@ -33,27 +33,30 @@ const { mode, scale } = useViewportMode(() => basePx.value);
 const canvasVisualWidth = computed(() => DESIGN_GRID_WIDTH * basePx.value * scale.value);
 const canvasVisualHeight = computed(() => DESIGN_GRID_HEIGHT * basePx.value * scale.value);
 
-// Compact mode: sort widgets by (y, x) into a vertical feed.
+// Compact mode: filter out 'hide' widgets, sort the survivors by (y, x) into
+// a vertical feed. 'shrink' widgets stay but lay flat with the rest; the
+// chart renderer handles the actual reflow inside.
 const compactWidgets = computed<Widget[]>(() =>
-  [...widgetStore.widgets].sort((a, b) => a.y - b.y || a.x - b.x),
+  [...widgetStore.widgets]
+    .filter((w) => responsiveModeOf(w) !== 'hide')
+    .sort((a, b) => a.y - b.y || a.x - b.x),
 );
 
 onMounted(() => {
+  // SSE subscriptions are installed at App.vue level. Here we only need a
+  // one-shot hydration when the RPC transport reports healthy — board /
+  // widgets / probe statuses then arrive via push events.
   const rpc = getRpc();
   unsubscribe = rpc.onStatus((s) => {
     if (s === 'connected') {
       void refresh();
     }
   });
-  widgetTimer = setInterval(() => void widgetStore.fetchAll(), 30_000);
-  probeTimer = setInterval(() => void probeStore.fetchAll(), 5_000);
   document.addEventListener('keydown', onGlobalKey);
 });
 
 onUnmounted(() => {
   unsubscribe?.();
-  if (widgetTimer) clearInterval(widgetTimer);
-  if (probeTimer) clearInterval(probeTimer);
   document.removeEventListener('keydown', onGlobalKey);
 });
 
@@ -80,7 +83,7 @@ function onGlobalKey(e: KeyboardEvent): void {
       <button
         type="button"
         :title="t('home.openSettings')"
-        class="astro-btn-icon border border-[color:var(--astro-glass-border)] p-2.5 text-[color:var(--astro-text-secondary)] outline-none ring-offset-2 ring-offset-[color:var(--astro-bg-base)] hover:border-[color:var(--astro-accent)]/40 hover:bg-white/[0.06] hover:text-[color:var(--astro-text-primary)] hover:shadow-md focus-visible:ring-2 focus-visible:ring-[color:var(--astro-accent)]"
+        class="astro-btn-icon border border-[color:var(--astro-glass-border)] p-2.5 text-[color:var(--astro-text-secondary)] outline-none hover:border-[color:var(--astro-accent-interactive)]/40 hover:bg-white/[0.06] hover:text-[color:var(--astro-text-primary)] hover:shadow-md focus-visible:ring-2 focus-visible:ring-[color:var(--astro-accent-interactive)]"
         @click="router.push({ name: 'settings' })"
       >
         <Icon
@@ -109,25 +112,30 @@ function onGlobalKey(e: KeyboardEvent): void {
       </button>
     </section>
 
-    <!-- Compact: vertical feed -->
+    <!-- Compact: vertical feed of WidgetTile (responsive==hide widgets dropped). -->
     <section
       v-else-if="mode === 'compact'"
       class="flex flex-col gap-3 select-none"
     >
-      <div
+      <WidgetTile
         v-for="w in compactWidgets"
         :key="w.id"
-        class="astro-glass min-h-[120px] w-full p-1 transition duration-200 motion-reduce:transition-none hover:border-[color:var(--astro-accent)]/35 hover:shadow-lg"
+        :widget="w"
+        :base-px="basePx"
+        layout="flow"
+        class="min-h-[120px] w-full"
       >
         <WidgetRenderer
           :widget="w"
           :interactive="true"
           :search-focus-key="searchFocusKey"
         />
-      </div>
+      </WidgetTile>
     </section>
 
-    <!-- Desktop / tablet: scaled canvas, centered, view-only -->
+    <!-- Desktop / tablet: scaled canvas, centered, view-only.
+         WidgetTile (not WidgetFrame) renders each item: no interact.js mount,
+         lower per-widget cost. -->
     <div
       v-else
       class="canvas-shell mx-auto select-none"

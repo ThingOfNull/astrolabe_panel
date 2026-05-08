@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 
 import type { MetricQuery } from '@/api/types';
 import type { Widget } from '@/canvas/types';
@@ -7,16 +8,8 @@ import { useMetricStore } from '@/stores/metric';
 import { useProbeStore } from '@/stores/probe';
 
 import AggregatedSearch from './AggregatedSearch.vue';
-import BarChart from './BarChart.vue';
-import BigNumber from './BigNumber.vue';
-import DividerBlock from './DividerBlock.vue';
-import Gauge from './Gauge.vue';
-import LineChart from './LineChart.vue';
 import SmartLink from './SmartLink.vue';
-import StatusGrid from './StatusGrid.vue';
-import TextBlock from './TextBlock.vue';
-import ClockWidget from './ClockWidget.vue';
-import WeatherWidget from './WeatherWidget.vue';
+import { widgetComponents } from './registry';
 import { ACCEPTED_SHAPES } from './types';
 
 const props = defineProps<{
@@ -25,6 +18,7 @@ const props = defineProps<{
   searchFocusKey?: number;
 }>();
 
+const { t } = useI18n();
 const probeStore = useProbeStore();
 const metricStore = useMetricStore();
 
@@ -32,7 +26,12 @@ const linkStatus = computed(() => probeStore.statusOf(props.widget.id));
 
 const isDataWidget = computed(() => Boolean(ACCEPTED_SHAPES[props.widget.type]));
 
-// Data widgets: subscribe metric polling on mount / when binding changes.
+// Dynamic dispatch: most widget renderers take exactly { widget }, so the
+// dispatcher resolves a component from the registry. SmartLink and the
+// aggregated search bar still need transport-specific props (status,
+// focus-key) so they keep their dedicated v-if branches above.
+const widgetComp = computed(() => widgetComponents[props.widget.type]);
+
 watch(
   () => {
     const w = props.widget;
@@ -79,46 +78,15 @@ onBeforeUnmount(() => metricStore.unbind(props.widget.id));
     :interactive="interactive"
     :focus-key="searchFocusKey"
   />
-  <Gauge
-    v-else-if="widget.type === 'gauge'"
-    :widget="widget"
-  />
-  <BigNumber
-    v-else-if="widget.type === 'bignumber'"
-    :widget="widget"
-  />
-  <LineChart
-    v-else-if="widget.type === 'line'"
-    :widget="widget"
-  />
-  <BarChart
-    v-else-if="widget.type === 'bar'"
-    :widget="widget"
-  />
-  <StatusGrid
-    v-else-if="widget.type === 'grid'"
-    :widget="widget"
-  />
-  <TextBlock
-    v-else-if="widget.type === 'text'"
-    :widget="widget"
-  />
-  <DividerBlock
-    v-else-if="widget.type === 'divider'"
-    :widget="widget"
-  />
-  <WeatherWidget
-    v-else-if="widget.type === 'weather'"
-    :widget="widget"
-  />
-  <ClockWidget
-    v-else-if="widget.type === 'clock'"
+  <component
+    :is="widgetComp"
+    v-else-if="widgetComp"
     :widget="widget"
   />
   <div
     v-else
     class="flex h-full w-full items-center justify-center text-xs text-[color:var(--astro-text-secondary)]"
   >
-    未知组件类型 {{ widget.type }}
+    {{ t('widget.unknownComponent', { type: widget.type }) }}
   </div>
 </template>

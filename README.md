@@ -55,7 +55,7 @@ The project stays **light on delivery**: the UI ships inside **one `astrolabe` b
 > **Arrange widgets like slides—see the board as your users will.**
 
 - ✨ **Grid snap:** Predictable positioning without micromanaging coordinates.
-- 🔄 **Live sync:** Push updates over WebSocket so edits and metric refreshes stay in step.
+- 🔄 **Live sync:** server-sent events push widget, board, datasource and probe changes the moment they happen — no polling, no missed flips.
 - 📦 **Imports:** Bring layouts and widgets back from JSON snapshots.
 
 ### 📊 Metrics & data sources

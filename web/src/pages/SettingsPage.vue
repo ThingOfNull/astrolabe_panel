@@ -15,6 +15,9 @@ import {
   type CustomThemeVars,
   type GlassTintMode,
 } from '@/composables/useTheme';
+import { useCanvasSelection } from '@/composables/useCanvasSelection';
+import { useClipboard } from '@/composables/useClipboard';
+import { useShortcuts } from '@/composables/useShortcuts';
 import {
   ACCEPTED_SHAPES,
   defaultBarConfig,
@@ -34,6 +37,7 @@ import type { Shape } from '@/api/types';
 import { downloadConfigBundleFile, httpImportConfigFile } from '@/api/httpConfig';
 import { httpUpload } from '@/api/httpUpload';
 import { getRpc } from '@/api/jsonrpc';
+import { formatRpcError } from '@/lib/rpcError';
 import ThemedFileTrigger from '@/components/ThemedFileTrigger.vue';
 import { type SupportedLocale, setLocale } from '@/i18n';
 import WidgetRenderer from '@/widgets/WidgetRenderer.vue';
@@ -55,26 +59,15 @@ const scale = ref(0.65);
 /** Must match server upload.MaxWallpaperBytes. */
 const WALLPAPER_UPLOAD_MAX_BYTES = 32 * 1024 * 1024;
 
-// Multi-select ids in insertion order (Shift-range uses last anchor).
-const selectedIds = ref<number[]>([]);
-const lastAnchorId = ref<number | null>(null);
+// Selection state: delegates to composable so range/shift/ctrl rules live in
+// one place and page shortcuts reuse it.
+const selection = useCanvasSelection(() => widgetStore.widgets.map((w) => w.id));
+const selectedIds = selection.selectedIds;
+const lastAnchorId = selection.lastAnchorId;
 
-// In-memory clipboard for this SPA session only; JSON-safe widget fields.
-type ClipSnapshot = Pick<
-  Widget,
-  | 'type'
-  | 'x'
-  | 'y'
-  | 'w'
-  | 'h'
-  | 'z_index'
-  | 'icon_type'
-  | 'icon_value'
-  | 'data_source_id'
-  | 'metric_query'
-  | 'config'
->;
-const clipboard = ref<ClipSnapshot[]>([]);
+// SPA-scoped clipboard; paste re-lays rectangles via findFreeSpot below.
+const clip = useClipboard();
+const clipboard = clip.items;
 
 const editModalOpen = ref(false);
 const editTarget = ref<Widget | null>(null);
@@ -188,7 +181,6 @@ async function loadAllFromBackend(): Promise<void> {
 }
 
 onMounted(() => {
-  document.addEventListener('keydown', onKeydown);
   // Rpc onStatus fires once immediately; reload after each reconnect vs empty canvas race.
   unsubscribeRpcStatus = getRpc().onStatus((s) => {
     if (s === 'connected') {
@@ -198,10 +190,48 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  document.removeEventListener('keydown', onKeydown);
   unsubscribeRpcStatus?.();
   unsubscribeRpcStatus = null;
 });
+
+// Editor-only hotkeys; useShortcuts handles focus-in-input filtering.
+useShortcuts(() => ({
+  'escape': (e) => {
+    if (editModalOpen.value) return;
+    if (selectedIds.value.length > 0) {
+      selection.clear();
+      e.preventDefault();
+    }
+  },
+  'delete': (e) => {
+    if (editModalOpen.value) return;
+    if (selectedIds.value.length > 0) {
+      e.preventDefault();
+      void deleteSelected();
+    }
+  },
+  'mod+c': (e) => {
+    if (editModalOpen.value) return;
+    if (selectedIds.value.length > 0) {
+      e.preventDefault();
+      copySelectedToClipboard();
+    }
+  },
+  'mod+v': (e) => {
+    if (editModalOpen.value) return;
+    if (clipboard.value.length > 0) {
+      e.preventDefault();
+      void pasteClipboard();
+    }
+  },
+  'mod+a': (e) => {
+    if (editModalOpen.value) return;
+    if (widgetStore.widgets.length > 0) {
+      e.preventDefault();
+      selection.selectAll();
+    }
+  },
+}));
 
 async function onExportConfig(): Promise<void> {
   exportInFlight.value = true;
@@ -209,7 +239,7 @@ async function onExportConfig(): Promise<void> {
   try {
     await downloadConfigBundleFile();
   } catch (err) {
-    errorMsg.value = formatError(err);
+    errorMsg.value = formatRpcError(err, t);
   } finally {
     exportInFlight.value = false;
   }
@@ -230,7 +260,7 @@ async function onImportFile(event: Event): Promise<void> {
     importSummary.value = summary ?? null;
     await Promise.all([boardStore.fetchBoard(), widgetStore.fetchAll(), dsStore.fetchAll()]);
   } catch (err) {
-    errorMsg.value = formatError(err);
+    errorMsg.value = formatRpcError(err, t);
   } finally {
     input.value = '';
   }
@@ -244,7 +274,7 @@ async function onBoardSave(): Promise<void> {
       grid_base_unit: boardDraftGrid.value,
     });
   } catch (err) {
-    errorMsg.value = formatError(err);
+    errorMsg.value = formatRpcError(err, t);
   }
 }
 
@@ -269,7 +299,7 @@ async function onSystemSave(): Promise<void> {
     }
     await boardStore.update(patch);
   } catch (err) {
-    errorMsg.value = formatError(err);
+    errorMsg.value = formatRpcError(err, t);
   }
 }
 
@@ -294,12 +324,26 @@ async function onWallpaperFile(ev: Event): Promise<void> {
   try {
     const res = await httpUpload('wallpaper', file);
     boardDraftWallpaper.value = res.url;
+    if (res.tint) {
+      // Bake the server-precomputed tint into the draft so saving the theme
+      // persists it; useTheme.applyCustomImageGlass will then skip the
+      // expensive client-side wallpaper sampling on subsequent loads.
+      boardDraftCustom.value = {
+        ...boardDraftCustom.value,
+        glass_tint_precomputed: {
+          glassBg: res.tint.glass_bg,
+          border: res.tint.border,
+          glow: res.tint.glow,
+          highlight: res.tint.highlight,
+        },
+      };
+    }
     wallpaperFeedback.value = {
       kind: 'ok',
       text: t('settings.wallpaperUploadOk'),
     };
   } catch (err) {
-    const msg = formatError(err);
+    const msg = formatRpcError(err, t);
     wallpaperFeedback.value = { kind: 'err', text: msg };
     errorMsg.value = msg;
   } finally {
@@ -317,7 +361,7 @@ async function onWidgetUpdate(id: number, rect: Rect): Promise<void> {
   try {
     await widgetStore.move(id, rect);
   } catch (err) {
-    errorMsg.value = formatError(err);
+    errorMsg.value = formatRpcError(err, t);
   }
 }
 
@@ -329,7 +373,7 @@ async function onWidgetsUpdateMany(
   try {
     await widgetStore.moveMany(updates);
   } catch (err) {
-    errorMsg.value = formatError(err);
+    errorMsg.value = formatRpcError(err, t);
   }
 }
 
@@ -340,47 +384,14 @@ function onCanvasSelect(
   id: number | null,
   mods: { ctrl: boolean; shift: boolean; meta: boolean },
 ): void {
-  if (id == null) {
-    selectedIds.value = [];
-    lastAnchorId.value = null;
-    return;
-  }
-  const ctrlOrMeta = mods.ctrl || mods.meta;
-  if (mods.shift && lastAnchorId.value !== null && lastAnchorId.value !== id) {
-    const order = widgetStore.widgets.map((w) => w.id);
-    const a = order.indexOf(lastAnchorId.value);
-    const b = order.indexOf(id);
-    if (a >= 0 && b >= 0) {
-      const [lo, hi] = a <= b ? [a, b] : [b, a];
-      const range = order.slice(lo, hi + 1);
-      const merged = new Set<number>([...selectedIds.value, ...range]);
-      selectedIds.value = Array.from(merged);
-      return;
-    }
-  }
-  if (ctrlOrMeta) {
-    if (selectedIds.value.includes(id)) {
-      selectedIds.value = selectedIds.value.filter((x) => x !== id);
-    } else {
-      selectedIds.value = [...selectedIds.value, id];
-    }
-    lastAnchorId.value = id;
-    return;
-  }
-  selectedIds.value = [id];
-  lastAnchorId.value = id;
+  selection.select(id, mods);
 }
 
 function onCanvasMarquee(
   ids: number[],
   mods: { ctrl: boolean; meta: boolean },
 ): void {
-  if (mods.ctrl || mods.meta) {
-    selectedIds.value = Array.from(new Set([...selectedIds.value, ...ids]));
-  } else {
-    selectedIds.value = ids;
-  }
-  lastAnchorId.value = ids[ids.length - 1] ?? null;
+  selection.setFromMarquee(ids, mods);
 }
 
 async function onWidgetDrop({
@@ -469,14 +480,14 @@ async function onWidgetDrop({
     // Data widgets need a datasource plus a metric path with the right shape.
     const expectedShape = ACCEPTED_SHAPES[type]?.[0];
     if (!expectedShape) {
-      errorMsg.value = `未知的 widget 类型：${type}`;
+      errorMsg.value = t('settings.unknownType', { type });
       return;
     }
     if (dsStore.items.length === 0) {
       await dsStore.fetchAll();
     }
     if (dsStore.items.length === 0) {
-      errorMsg.value = '请先在 "数据源" Tab 中添加数据源后再放置数据组件。';
+      errorMsg.value = t('settings.datasourceRequired');
       return;
     }
     // Prefer a datasource whose tree exposes the expected shape first.
@@ -496,7 +507,7 @@ async function onWidgetDrop({
       }
     }
     if (!chosenDsId || !chosenLeafPath) {
-      errorMsg.value = `当前没有数据源能产出 ${expectedShape} 形态。请先在 "数据源" Tab 添加合适的数据源。`;
+      errorMsg.value = t('settings.shapeUnavailable', { expectedShape });
       return;
     }
     const created = await widgetStore.create({
@@ -515,7 +526,7 @@ async function onWidgetDrop({
     selectedIds.value = [created.id];
     lastAnchorId.value = created.id;
   } catch (err) {
-    errorMsg.value = formatError(err);
+    errorMsg.value = formatRpcError(err, t);
   } finally {
     submitting.value = false;
   }
@@ -583,7 +594,7 @@ async function onWidgetDelete(id: number): Promise<void> {
     selectedIds.value = selectedIds.value.filter((x) => x !== id);
     if (lastAnchorId.value === id) lastAnchorId.value = null;
   } catch (err) {
-    errorMsg.value = formatError(err);
+    errorMsg.value = formatRpcError(err, t);
   }
 }
 
@@ -596,45 +607,20 @@ async function deleteSelected(): Promise<void> {
     for (const id of ids) {
       await widgetStore.remove(id);
     }
-    selectedIds.value = [];
-    lastAnchorId.value = null;
+    selection.clear();
   } catch (err) {
-    errorMsg.value = formatError(err);
+    errorMsg.value = formatRpcError(err, t);
   }
 }
 
 // ---- Copy / paste ----
 
-/**
- * Deep clone JSON-serializable fields; strips Vue/Pinia Proxy (structuredClone breaks on Proxy).
- */
-function cloneSerializableJson<T>(value: T | null | undefined): T | null {
-  if (value == null) {
-    return null;
-  }
-  return JSON.parse(JSON.stringify(value)) as T;
-}
-
 function copySelectedToClipboard(): void {
   if (selectedIds.value.length === 0) return;
   const set = new Set(selectedIds.value);
   // Keep list order relative to canvas when copying.
-  const snaps: ClipSnapshot[] = widgetStore.widgets
-    .filter((w) => set.has(w.id))
-    .map((w) => ({
-      type: w.type,
-      x: w.x,
-      y: w.y,
-      w: w.w,
-      h: w.h,
-      z_index: w.z_index,
-      icon_type: w.icon_type,
-      icon_value: w.icon_value,
-      data_source_id: w.data_source_id,
-      metric_query: w.metric_query == null ? null : cloneSerializableJson(w.metric_query),
-      config: w.config == null ? {} : cloneSerializableJson(w.config) ?? {},
-    }));
-  clipboard.value = snaps;
+  const snaps = widgetStore.widgets.filter((w) => set.has(w.id));
+  clip.copy(snaps);
 }
 
 async function pasteClipboard(): Promise<void> {
@@ -677,7 +663,7 @@ async function pasteClipboard(): Promise<void> {
     selectedIds.value = newIds;
     lastAnchorId.value = newIds[newIds.length - 1] ?? null;
   } catch (err) {
-    errorMsg.value = formatError(err);
+    errorMsg.value = formatRpcError(err, t);
   } finally {
     submitting.value = false;
   }
@@ -685,62 +671,8 @@ async function pasteClipboard(): Promise<void> {
 
 // ---- Settings page hotkeys ----
 //
-// Mounted only on settings. Skip when focus is in form fields or contenteditable.
-function onKeydown(e: KeyboardEvent): void {
-  const target = e.target as HTMLElement | null;
-  if (target) {
-    const tag = target.tagName;
-    if (
-      tag === 'INPUT' ||
-      tag === 'TEXTAREA' ||
-      tag === 'SELECT' ||
-      target.isContentEditable
-    ) {
-      return;
-    }
-  }
-  // Do not steal keys while edit modal is open.
-  if (editModalOpen.value) return;
-
-  const meta = e.ctrlKey || e.metaKey;
-  if (e.key === 'Escape') {
-    if (selectedIds.value.length > 0) {
-      selectedIds.value = [];
-      lastAnchorId.value = null;
-      e.preventDefault();
-    }
-    return;
-  }
-  if (e.key === 'Delete' || e.key === 'Backspace') {
-    if (selectedIds.value.length > 0) {
-      e.preventDefault();
-      void deleteSelected();
-    }
-    return;
-  }
-  if (meta && (e.key === 'c' || e.key === 'C')) {
-    if (selectedIds.value.length > 0) {
-      e.preventDefault();
-      copySelectedToClipboard();
-    }
-    return;
-  }
-  if (meta && (e.key === 'v' || e.key === 'V')) {
-    if (clipboard.value.length > 0) {
-      e.preventDefault();
-      void pasteClipboard();
-    }
-    return;
-  }
-  if (meta && (e.key === 'a' || e.key === 'A')) {
-    if (widgetStore.widgets.length > 0) {
-      e.preventDefault();
-      selectedIds.value = widgetStore.widgets.map((w) => w.id);
-      lastAnchorId.value = selectedIds.value[selectedIds.value.length - 1] ?? null;
-    }
-    return;
-  }
-}
+// Wired via useShortcuts() above; this section intentionally has no body —
+// keeping the comment so future readers know where the keymap lives.
 
 async function onModalSubmit({ id, patch }: { id: number; patch: Partial<Widget> }): Promise<void> {
   errorMsg.value = null;
@@ -748,15 +680,8 @@ async function onModalSubmit({ id, patch }: { id: number; patch: Partial<Widget>
     await widgetStore.update(id, patch);
     editModalOpen.value = false;
   } catch (err) {
-    errorMsg.value = formatError(err);
+    errorMsg.value = formatRpcError(err, t);
   }
-}
-
-function formatError(err: unknown): string {
-  if (err && typeof err === 'object' && 'message' in err) {
-    return String((err as { message: unknown }).message);
-  }
-  return String(err);
 }
 </script>
 

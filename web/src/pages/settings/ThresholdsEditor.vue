@@ -2,6 +2,7 @@
 // Threshold rows: numeric value + CSS color + add/remove helpers (v-model list).
 
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 
 import type { Threshold } from '@/widgets/thresholds';
 
@@ -11,6 +12,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:modelValue': [value: Threshold[]];
 }>();
+
+const { t: i18n } = useI18n();
 
 const items = computed<Threshold[]>(() => props.modelValue ?? []);
 
@@ -35,7 +38,7 @@ function remove(idx: number): void {
 <template>
   <div class="space-y-1">
     <p class="text-xs text-[color:var(--astro-text-secondary)]">
-      阈值色（按数值升序匹配）：
+      {{ i18n('thresholds.legend') }}
     </p>
     <div
       v-for="(t, idx) in items"
@@ -66,7 +69,7 @@ function remove(idx: number): void {
         class="rounded border border-[color:var(--astro-glass-border)] px-2 py-1 text-[10px] hover:bg-white/5"
         @click="remove(idx)"
       >
-        删除
+        {{ i18n('thresholds.delete') }}
       </button>
     </div>
     <button
@@ -74,7 +77,8 @@ function remove(idx: number): void {
       class="rounded border border-[color:var(--astro-glass-border)] px-2 py-1 text-[10px] hover:bg-white/5"
       @click="add"
     >
-      + 添加阈值
+      {{ i18n('thresholds.add') }}
     </button>
   </div>
 </template>
+

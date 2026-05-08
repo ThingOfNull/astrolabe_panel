@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n';
 import ThemedFileTrigger from '@/components/ThemedFileTrigger.vue';
 import { httpDeleteUpload, httpListUploads, httpUpload } from '@/api/httpUpload';
 import { getRpc } from '@/api/jsonrpc';
+import { formatRpcError } from '@/lib/rpcError';
 
 const { t } = useI18n();
 
@@ -50,7 +51,7 @@ async function runSearch(): Promise<void> {
     });
     searchResults.value = r.icons ?? [];
   } catch (err) {
-    searchError.value = formatError(err);
+    searchError.value = formatRpcError(err, t);
   } finally {
     searching.value = false;
   }
@@ -72,7 +73,7 @@ async function refreshUploads(): Promise<void> {
     const r = await httpListUploads();
     uploads.value = r.items ?? [];
   } catch (err) {
-    uploadError.value = formatError(err);
+    uploadError.value = formatRpcError(err, t);
   }
 }
 
@@ -90,7 +91,7 @@ async function onUploadFile(event: Event): Promise<void> {
     await refreshUploads();
     value.value = r.name;
   } catch (err) {
-    uploadError.value = formatError(err);
+    uploadError.value = formatRpcError(err, t);
   } finally {
     uploading.value = false;
     input.value = '';
@@ -106,7 +107,7 @@ async function onDeleteUpload(name: string): Promise<void> {
       value.value = '';
     }
   } catch (err) {
-    uploadError.value = formatError(err);
+    uploadError.value = formatRpcError(err, t);
   }
 }
 
@@ -119,13 +120,6 @@ watch(
   },
   { immediate: true },
 );
-
-function formatError(err: unknown): string {
-  if (err && typeof err === 'object' && 'message' in err) {
-    return String((err as { message: unknown }).message);
-  }
-  return String(err);
-}
 </script>
 
 <template>
@@ -137,7 +131,7 @@ function formatError(err: unknown): string {
         :class="tab === 'ICONIFY' ? 'bg-[color:var(--astro-accent)] text-black' : ''"
         @click="tab = 'ICONIFY'"
       >
-        Iconify
+        {{ t('iconPicker.tabIconify') }}
       </button>
       <button
         type="button"
@@ -145,7 +139,7 @@ function formatError(err: unknown): string {
         :class="tab === 'INTERNAL' ? 'bg-[color:var(--astro-accent)] text-black' : ''"
         @click="tab = 'INTERNAL'"
       >
-        本地上传
+        {{ t('iconPicker.tabInternal') }}
       </button>
       <button
         type="button"
@@ -153,17 +147,17 @@ function formatError(err: unknown): string {
         :class="tab === 'REMOTE' ? 'bg-[color:var(--astro-accent)] text-black' : ''"
         @click="tab = 'REMOTE'"
       >
-        远程 URL
+        {{ t('iconPicker.tabRemote') }}
       </button>
     </div>
 
     <!-- Current value -->
     <label class="block">
-      <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">当前图标值</span>
+      <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('iconPicker.currentIcon') }}</span>
       <input
         v-model="value"
         type="text"
-        :placeholder="tab === 'ICONIFY' ? 'mdi:server-network' : tab === 'INTERNAL' ? 'abc.svg（仅文件名）' : 'https://example.com/logo.png'"
+        :placeholder="tab === 'ICONIFY' ? t('iconPicker.placeholderIconify') : tab === 'INTERNAL' ? t('iconPicker.placeholderInternal') : t('iconPicker.placeholderRemote')"
         class="w-full rounded-md border border-[color:var(--astro-glass-border)] bg-transparent px-3 py-2 font-mono text-xs"
       >
     </label>
@@ -176,14 +170,14 @@ function formatError(err: unknown): string {
       <input
         v-model="query"
         type="text"
-        placeholder="搜索 Iconify（如 server, cpu, docker）"
+        :placeholder="t('iconPicker.searchPlaceholder')"
         class="w-full rounded-md border border-[color:var(--astro-glass-border)] bg-transparent px-3 py-2"
       >
       <p
         v-if="searching"
         class="text-xs text-[color:var(--astro-text-secondary)]"
       >
-        搜索中…
+        {{ t('iconPicker.searching') }}
       </p>
       <p
         v-if="searchError"
@@ -234,7 +228,7 @@ function formatError(err: unknown): string {
         </p>
       </div>
       <p class="text-[10px] text-[color:var(--astro-text-secondary)]">
-        支持 svg / png / jpg / webp / gif，最大 1 MiB；同内容会自动去重。
+        {{ t('iconPicker.uploadHint') }}
       </p>
       <p
         v-if="uploadError"
@@ -268,7 +262,7 @@ function formatError(err: unknown): string {
           <button
             type="button"
             class="absolute right-0.5 top-0.5 hidden rounded bg-red-700/70 px-1 text-[10px] text-white group-hover:block"
-            title="删除"
+            :title="t('iconPicker.delete')"
             @click="onDeleteUpload(item.name)"
           >
             ✕
@@ -285,7 +279,7 @@ function formatError(err: unknown): string {
       <img
         :src="value"
         class="h-10 w-10 object-contain"
-        alt="预览"
+        :alt="t('iconPicker.preview')"
       >
     </div>
   </div>

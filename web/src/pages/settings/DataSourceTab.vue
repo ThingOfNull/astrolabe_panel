@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { Icon } from '@iconify/vue';
 import { computed, onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 
 import type { DataSourceView } from '@/api/types';
 import { useDataSourceStore } from '@/stores/datasources';
 
 import MetricTreeView from './MetricTreeView.vue';
 
+const { t } = useI18n();
 const dsStore = useDataSourceStore();
 
 const draftMode = ref<'list' | 'edit'>('list');
@@ -111,7 +113,7 @@ async function onSave(): Promise<void> {
 }
 
 async function onDelete(d: DataSourceView): Promise<void> {
-  if (!window.confirm(`确认删除数据源 "${d.name}"？引用此数据源的 widget 将解除绑定。`)) {
+  if (!window.confirm(t('datasource.confirmDelete', { name: d.name }))) {
     return;
   }
   try {
@@ -158,14 +160,14 @@ function healthDot(h: string | undefined): string {
     <div v-if="draftMode === 'list'">
       <div class="flex items-center justify-between">
         <p class="text-xs text-[color:var(--astro-text-secondary)]">
-          数据源驱动 Gauge / BigNumber 等 BI 组件。
+          {{ t('datasource.intro') }}
         </p>
         <button
           type="button"
           class="rounded border border-[color:var(--astro-glass-border)] px-2 py-1 text-xs hover:bg-white/5"
           @click="startCreate"
         >
-          + 添加
+          {{ t('datasource.add') }}
         </button>
       </div>
 
@@ -204,14 +206,14 @@ function healthDot(h: string | undefined): string {
               class="rounded px-2 py-1 text-xs hover:bg-white/5"
               @click="startEdit(d)"
             >
-              编辑
+              {{ t('datasource.edit') }}
             </button>
             <button
               type="button"
               class="rounded bg-red-600/40 px-2 py-1 text-xs hover:bg-red-600/70"
               @click="onDelete(d)"
             >
-              删除
+              {{ t('datasource.delete') }}
             </button>
           </div>
           <div
@@ -226,7 +228,7 @@ function healthDot(h: string | undefined): string {
               v-else
               class="text-xs text-[color:var(--astro-text-secondary)]"
             >
-              加载指标树中…
+              {{ t('datasource.loadingTree') }}
             </p>
           </div>
         </li>
@@ -234,7 +236,7 @@ function healthDot(h: string | undefined): string {
           v-if="items.length === 0"
           class="text-xs text-[color:var(--astro-text-secondary)]"
         >
-          暂无数据源。点击右上角 + 添加。
+          {{ t('datasource.empty') }}
         </li>
       </ul>
     </div>
@@ -245,18 +247,18 @@ function healthDot(h: string | undefined): string {
     >
       <div class="flex items-center justify-between">
         <h3 class="text-sm font-semibold">
-          {{ draftId ? '编辑数据源' : '添加数据源' }}
+          {{ draftId ? t('datasource.editorEdit') : t('datasource.editorCreate') }}
         </h3>
         <button
           type="button"
           class="text-xs text-[color:var(--astro-text-secondary)] hover:text-[color:var(--astro-text-primary)]"
           @click="backToList"
         >
-          返回列表
+          {{ t('datasource.backList') }}
         </button>
       </div>
       <label class="block">
-        <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">名称</span>
+        <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('datasource.fieldName') }}</span>
         <input
           v-model="draft.name"
           type="text"
@@ -264,21 +266,21 @@ function healthDot(h: string | undefined): string {
         >
       </label>
       <label class="block">
-        <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">类型</span>
+        <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('datasource.fieldType') }}</span>
         <select
           v-model="draft.type"
           class="w-full rounded-md border border-[color:var(--astro-glass-border)] bg-transparent px-3 py-2"
         >
           <option
-            v-for="t in dsStore.types"
-            :key="t"
-            :value="t"
-          >{{ t }}</option>
+            v-for="ty in dsStore.types"
+            :key="ty"
+            :value="ty"
+          >{{ ty }}</option>
         </select>
       </label>
       <label class="block">
         <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">
-          Endpoint（local 留空；docker 默认 unix:///var/run/docker.sock）
+          {{ t('datasource.fieldEndpoint') }}
         </span>
         <input
           v-model="draft.endpoint"
@@ -288,7 +290,7 @@ function healthDot(h: string | undefined): string {
       </label>
       <details>
         <summary class="cursor-pointer text-xs text-[color:var(--astro-text-secondary)]">
-          高级（auth / extra JSON）
+          {{ t('datasource.advanced') }}
         </summary>
         <label class="mt-2 block">
           <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">auth (JSON)</span>
@@ -312,7 +314,7 @@ function healthDot(h: string | undefined): string {
         class="rounded p-2 text-xs"
         :class="testResult.ok ? 'bg-emerald-700/20 text-emerald-200' : 'bg-red-700/20 text-red-200'"
       >
-        {{ testResult.ok ? '连接测试成功' : ('连接失败：' + (testResult.error ?? '')) }}
+        {{ testResult.ok ? t('datasource.testOk') : t('datasource.testFail', { error: testResult.error ?? '' }) }}
       </div>
       <div class="flex justify-end gap-2 pt-2">
         <button
@@ -320,14 +322,14 @@ function healthDot(h: string | undefined): string {
           class="rounded-md border border-[color:var(--astro-glass-border)] px-3 py-1.5 text-xs hover:bg-white/5"
           @click="onTestConnect"
         >
-          测试连接
+          {{ t('datasource.testConnect') }}
         </button>
         <button
           type="button"
           class="rounded-md bg-[color:var(--astro-accent)] px-3 py-1.5 text-xs text-black hover:opacity-90"
           @click="onSave"
         >
-          保存
+          {{ t('datasource.save') }}
         </button>
       </div>
     </div>

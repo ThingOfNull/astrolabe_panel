@@ -16,27 +16,41 @@ import (
 
 // Known widget kinds (keep in sync with frontend palette).
 const (
-	WidgetTypeLink      = "link"
-	WidgetTypeSearch    = "search"
-	WidgetTypeGauge     = "gauge"
-	WidgetTypeBigNumber = "bignumber"
-	WidgetTypeLine      = "line"
-	WidgetTypeBar       = "bar"
-	WidgetTypeGrid      = "grid"
-	WidgetTypeText      = "text"
-	WidgetTypeDivider   = "divider"
-	WidgetTypeWeather   = "weather"
-	WidgetTypeClock     = "clock"
+	WidgetTypeLink         = "link"
+	WidgetTypeSearch       = "search"
+	WidgetTypeGauge        = "gauge"
+	WidgetTypeBigNumber    = "bignumber"
+	WidgetTypeLine         = "line"
+	WidgetTypeBar          = "bar"
+	WidgetTypeGrid         = "grid"
+	WidgetTypeText         = "text"
+	WidgetTypeDivider      = "divider"
+	WidgetTypeWeather      = "weather"
+	WidgetTypeClock        = "clock"
+	WidgetTypeLiquid       = "liquid"
+	WidgetTypeRadial3D     = "radial3d"
+	WidgetTypeHeatmap      = "heatmap"
+	WidgetTypeSparkline    = "sparkline"
+	WidgetTypeBullet       = "bullet"
+	WidgetTypeProgressRing = "progress_ring"
+	WidgetTypeTimeline     = "timeline"
 )
 
 // AcceptedShapesByType guards datasource bindings.
 // Enforced on widget create/update.
 var AcceptedShapesByType = map[string][]string{
-	WidgetTypeGauge:     {"Scalar"},
-	WidgetTypeBigNumber: {"Scalar"},
-	WidgetTypeLine:      {"TimeSeries"},
-	WidgetTypeBar:       {"Categorical"},
-	WidgetTypeGrid:      {"EntityList"},
+	WidgetTypeGauge:        {"Scalar"},
+	WidgetTypeBigNumber:    {"Scalar"},
+	WidgetTypeLine:         {"TimeSeries"},
+	WidgetTypeBar:          {"Categorical"},
+	WidgetTypeGrid:         {"EntityList"},
+	WidgetTypeLiquid:       {"Scalar"},
+	WidgetTypeRadial3D:     {"Scalar"},
+	WidgetTypeHeatmap:      {"TimeSeries"},
+	WidgetTypeSparkline:    {"TimeSeries"},
+	WidgetTypeBullet:       {"Scalar"},
+	WidgetTypeProgressRing: {"Scalar"},
+	WidgetTypeTimeline:     {"EntityList"},
 }
 
 // Known widget icon backends.
@@ -271,7 +285,9 @@ func validateWidget(w *models.Widget) error {
 	case WidgetTypeLink, WidgetTypeSearch,
 		WidgetTypeGauge, WidgetTypeBigNumber,
 		WidgetTypeLine, WidgetTypeBar, WidgetTypeGrid,
-		WidgetTypeText, WidgetTypeDivider, WidgetTypeWeather, WidgetTypeClock:
+		WidgetTypeText, WidgetTypeDivider, WidgetTypeWeather, WidgetTypeClock,
+		WidgetTypeLiquid, WidgetTypeRadial3D, WidgetTypeHeatmap,
+		WidgetTypeSparkline, WidgetTypeBullet, WidgetTypeProgressRing, WidgetTypeTimeline:
 	default:
 		return fmt.Errorf("%w: %q", ErrInvalidWidgetType, w.Type)
 	}
@@ -357,17 +373,18 @@ func validateMetricQueryShape(raw string, accepted []string) error {
 }
 
 // validateLinkConfig enforces http(s) + visibility toggles.
-// At least one of icon/title/url must stay visible.
+// At least one of icon/title/url must stay visible (or display_mode set).
 func validateLinkConfig(raw string) error {
 	if raw == "" {
 		return nil
 	}
 	var cfg struct {
-		URL       string `json:"url"`
-		ShowIcon  *bool  `json:"show_icon"`
-		ShowTitle *bool  `json:"show_title"`
-		ShowURL   *bool  `json:"show_url"`
-		Probe     struct {
+		URL         string  `json:"url"`
+		DisplayMode *string `json:"display_mode"`
+		ShowIcon    *bool   `json:"show_icon"`
+		ShowTitle   *bool   `json:"show_title"`
+		ShowURL     *bool   `json:"show_url"`
+		Probe       struct {
 			Type string `json:"type"`
 			Host string `json:"host"`
 		} `json:"probe"`
@@ -378,6 +395,16 @@ func validateLinkConfig(raw string) error {
 	if cfg.URL != "" {
 		if err := requireHTTPProtocol(cfg.URL); err != nil {
 			return err
+		}
+	}
+	// display_mode (preferred): any of the four enum strings means
+	// at least one element is visible.
+	if cfg.DisplayMode != nil {
+		switch *cfg.DisplayMode {
+		case "icon_only", "title_only", "title_url", "url_only":
+			return nil
+		default:
+			return fmt.Errorf("%w: link.display_mode", ErrInvalidConfigJSON)
 		}
 	}
 	tri := func(p *bool) bool {
@@ -501,14 +528,21 @@ func requireHTTPProtocol(raw string) error {
 }
 
 func (s *Store) assertNoOverlap(ctx context.Context, boardID, selfID int64, x, y, w, h int) error {
+	// Bounding-box prefilter pushes the rect-intersection check into SQL so we
+	// only deserialize candidates that could actually overlap. The composite
+	// index (board_id, x, y) makes this O(log N + k) instead of O(N).
 	var siblings []models.Widget
-	q := s.DB.WithContext(ctx).Where("board_id = ?", boardID)
+	q := s.DB.WithContext(ctx).
+		Where("board_id = ?", boardID).
+		Where("x < ? AND (x + w) > ? AND y < ? AND (y + h) > ?", x+w, x, y+h, y)
 	if selfID > 0 {
 		q = q.Where("id <> ?", selfID)
 	}
 	if err := q.Find(&siblings).Error; err != nil {
 		return err
 	}
+	// SQL filter is conservative; a final precise check guards against any
+	// edge-case rounding in custom collations.
 	for i := range siblings {
 		o := &siblings[i]
 		if rectsOverlap(x, y, w, h, o.X, o.Y, o.W, o.H) {

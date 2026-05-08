@@ -37,7 +37,11 @@ func Open(ctx context.Context, opts Options) (*Store, error) {
 		return nil, errors.New("store: DBPath required")
 	}
 
-	dsn := fmt.Sprintf("%s?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)", opts.DBPath)
+	// synchronous=NORMAL is safe with WAL and cuts fsync cost substantially on
+	// commodity NAS SSDs; busy_timeout absorbs brief write-lock contention so
+	// probe + user writes + metric ingestion do not surface "database is
+	// locked" to callers.
+	dsn := fmt.Sprintf("%s?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)", opts.DBPath)
 	dbLogger := gormlogger.New(
 		log.New(io.Discard, "", 0),
 		gormlogger.Config{

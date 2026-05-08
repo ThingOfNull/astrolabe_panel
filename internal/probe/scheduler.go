@@ -10,6 +10,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"astrolabe/internal/events"
 	"astrolabe/internal/store"
 	"astrolabe/internal/store/models"
 )
@@ -23,7 +24,12 @@ type Scheduler struct {
 	mu                 sync.Mutex
 	inflight           map[int64]struct{}
 	logger             *slog.Logger
+	hub                *events.Hub // optional; set via SetHub
 }
+
+// SetHub attaches an event hub so the scheduler can push probe.changed on
+// status flips. Must be called before Run.
+func (sc *Scheduler) SetHub(h *events.Hub) { sc.hub = h }
 
 // Options tune backlog scanning.
 type Options struct {
@@ -144,6 +150,17 @@ func (sc *Scheduler) runOne(ctx context.Context, widgetID int64, cfg LinkProbeCo
 	spec := SpecFromLinkConfig(cfg, sc.defaultTimeoutSec)
 	res := Probe(ctx, spec)
 
+	// Peek previous status so we only broadcast on actual flips.
+	// A missing row (first probe) counts as unknown; any change from the
+	// initial unknown → ok/down fires once, as expected.
+	prev := StatusUnknown
+	var prevRow models.ProbeStatus
+	if err := sc.store.DB.WithContext(ctx).
+		Where("widget_id = ?", widgetID).
+		First(&prevRow).Error; err == nil {
+		prev = prevRow.Status
+	}
+
 	row := models.ProbeStatus{
 		WidgetID:  widgetID,
 		Status:    res.Status,
@@ -156,6 +173,19 @@ func (sc *Scheduler) runOne(ctx context.Context, widgetID int64, cfg LinkProbeCo
 		return
 	}
 	sc.logger.Debug("probe done", "widget_id", widgetID, "status", res.Status, "latency_ms", res.LatencyMs)
+
+	if sc.hub != nil && prev != res.Status {
+		sc.hub.Broadcast(events.Event{
+			Type: events.TypeProbeChanged,
+			Payload: map[string]any{
+				"widget_id":  widgetID,
+				"status":     res.Status,
+				"latency_ms": res.LatencyMs,
+				"checked_at": row.CheckedAt,
+				"previous":   prev,
+			},
+		})
+	}
 }
 
 func parseLinkConfig(raw json.RawMessage) (LinkProbeConfig, bool) {

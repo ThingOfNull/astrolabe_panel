@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 
+import { getEvents } from '@/api/events';
 import { getRpc } from '@/api/jsonrpc';
 
 export interface ProbeStatusItem {
@@ -30,5 +31,24 @@ export const useProbeStore = defineStore('probe', () => {
     return statuses.value[id]?.status ?? 'unknown';
   });
 
-  return { statuses, fetchAll, statusOf };
+  /**
+   * Install SSE handler: probe.changed events patch the local map so link
+   * widgets re-color the moment the scheduler detects a flip.
+   */
+  function subscribeEvents(): () => void {
+    return getEvents().on('probe.changed', (p) => {
+      if (!p || typeof p.widget_id !== 'number') return;
+      statuses.value = {
+        ...statuses.value,
+        [p.widget_id]: {
+          widget_id: p.widget_id,
+          status: p.status,
+          latency_ms: p.latency_ms,
+          checked_at: p.checked_at,
+        },
+      };
+    });
+  }
+
+  return { statuses, fetchAll, statusOf, subscribeEvents };
 });

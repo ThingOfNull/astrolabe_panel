@@ -11,6 +11,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import type { CategoricalPayload } from '@/api/types';
 import type { Widget } from '@/canvas/types';
+import { useEChartsTheme } from '@/composables/useEChartsTheme';
 import { useMetricStore } from '@/stores/metric';
 import { normalizeThresholds, pickColor } from '@/widgets/thresholds';
 import type { Threshold } from '@/widgets/thresholds';
@@ -35,6 +36,7 @@ const props = defineProps<{
 }>();
 
 const metricStore = useMetricStore();
+const theme = useEChartsTheme();
 const containerRef = ref<HTMLDivElement | null>(null);
 let chart: echarts.ECharts | null = null;
 
@@ -55,16 +57,17 @@ function buildOption(): echarts.EChartsCoreOption {
   const labels = items.map((i) => i.label);
   const values = items.map((i) => i.value);
   const horizontal = cfg.value.horizontal ?? true;
-  const labelStyle = { color: '#888', fontSize: 10 };
-  const splitLine = { lineStyle: { color: 'rgba(255,255,255,0.05)' } };
-  const axisLine = { lineStyle: { color: 'rgba(255,255,255,0.2)' } };
+  const t = theme.value;
+  const labelStyle = { color: t.textSecondary, fontSize: 10 };
+  const splitLine = { lineStyle: { color: t.splitLine } };
+  const axisLine = { lineStyle: { color: t.splitLine } };
   const valueAxis = {
     type: 'value' as const,
     axisLabel: labelStyle,
     splitLine,
     axisLine,
     name: cat?.unit ?? '',
-    nameTextStyle: { color: '#888' },
+    nameTextStyle: { color: t.textSecondary },
   };
   const categoryAxis = {
     type: 'category' as const,
@@ -73,11 +76,21 @@ function buildOption(): echarts.EChartsCoreOption {
     axisLine,
   };
   return {
-    grid: { left: horizontal ? 90 : 36, right: 12, top: cfg.value.title ? 28 : 16, bottom: horizontal ? 24 : 60 },
+    grid: {
+      left: horizontal ? 90 : 36,
+      right: 12,
+      top: cfg.value.title ? 28 : 16,
+      bottom: horizontal ? 24 : 60,
+    },
     title: cfg.value.title
-      ? { text: cfg.value.title, left: 'center', textStyle: { color: '#aaa', fontSize: 12 } }
+      ? { text: cfg.value.title, left: 'center', textStyle: { color: t.textSecondary, fontSize: 12 } }
       : undefined,
-    tooltip: { trigger: 'axis' },
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: t.surface,
+      borderColor: t.border,
+      textStyle: { color: t.textPrimary },
+    },
     xAxis: horizontal ? valueAxis : categoryAxis,
     yAxis: horizontal ? categoryAxis : valueAxis,
     series: [
@@ -86,7 +99,7 @@ function buildOption(): echarts.EChartsCoreOption {
         data: values.map((v) => ({
           value: v,
           itemStyle: {
-            color: pickColor(v, cfg.value.thresholds, '#3b82f6'),
+            color: pickColor(v, cfg.value.thresholds, t.accentInteractive),
             borderRadius: 4,
           },
         })),
@@ -121,7 +134,7 @@ onBeforeUnmount(() => {
   }
 });
 
-watch([payload, cfg], render);
+watch([payload, cfg, theme], render, { deep: true });
 watch(() => [props.widget.w, props.widget.h], () => requestAnimationFrame(resize));
 </script>
 

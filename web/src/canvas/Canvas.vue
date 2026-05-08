@@ -6,6 +6,7 @@
 import { computed, ref } from 'vue';
 
 import CanvasGrid from './CanvasGrid.vue';
+import SmartGuides from './SmartGuides.vue';
 import WidgetFrame from './WidgetFrame.vue';
 import type { CanvasMode, Rect, Widget } from './types';
 import { DESIGN_GRID_HEIGHT, DESIGN_GRID_WIDTH } from './types';
@@ -63,19 +64,49 @@ function onWidgetUpdate(id: number, rect: Rect): void {
 
 const groupOffset = ref<{ dx: number; dy: number }>({ dx: 0, dy: 0 });
 let groupDragLeaderId: number | null = null;
+const leaderId = ref<number | null>(null);
+
+// Live rect (in grid units) of the dragging widget, used to render snap
+// guides. Re-computed on every onMultiMove tick from the leader widget plus
+// the current pixel offset.
+const guideActiveRect = computed<Rect | null>(() => {
+  const id = leaderId.value;
+  if (id === null) return null;
+  const w = props.widgets.find((x) => x.id === id);
+  if (!w) return null;
+  const dx = Math.round(groupOffset.value.dx / props.basePx);
+  const dy = Math.round(groupOffset.value.dy / props.basePx);
+  return { x: w.x + dx, y: w.y + dy, w: w.w, h: w.h };
+});
+
+const guideOtherRects = computed<Rect[]>(() => {
+  const id = leaderId.value;
+  if (id === null) return [];
+  return props.widgets
+    .filter((w) => w.id !== id)
+    .map((w) => ({ x: w.x, y: w.y, w: w.w, h: w.h }));
+});
 
 function applyGroupTransformToFollowers(): void {
   if (!containerRef.value) return;
+  // Write the group offset as CSS variables on each selected follower; the
+  // WidgetFrame style consumes `--wf-dx / --wf-dy` to translate. This avoids
+  // direct el.style.transform mutation (which bypassed Vue reactivity and
+  // broke a11y inspection of drag state).
   const followers = containerRef.value.querySelectorAll<HTMLElement>('[data-widget-id]');
   followers.forEach((el) => {
     const id = Number(el.dataset.widgetId);
     if (!Number.isFinite(id) || id === groupDragLeaderId || !selectedSet.value.has(id)) return;
-    el.style.transform = `translate(${groupOffset.value.dx}px, ${groupOffset.value.dy}px)`;
+    el.style.setProperty('--wf-dx', `${groupOffset.value.dx}px`);
+    el.style.setProperty('--wf-dy', `${groupOffset.value.dy}px`);
   });
 }
 
 function onMultiMove(id: number, delta: { dx: number; dy: number }): void {
-  if (groupDragLeaderId === null) groupDragLeaderId = id;
+  if (groupDragLeaderId === null) {
+    groupDragLeaderId = id;
+    leaderId.value = id;
+  }
   if (groupDragLeaderId !== id) return; // Ignore non-leader frames
   groupOffset.value = {
     dx: groupOffset.value.dx + delta.dx,
@@ -125,12 +156,14 @@ function onMultiCommit(id: number): void {
       .forEach((el) => {
         const wid = Number(el.dataset.widgetId);
         if (selectedSet.value.has(wid)) {
-          el.style.transform = '';
+          el.style.removeProperty('--wf-dx');
+          el.style.removeProperty('--wf-dy');
         }
       });
   }
   groupOffset.value = { dx: 0, dy: 0 };
   groupDragLeaderId = null;
+  leaderId.value = null;
 
   if (valid && candidates.length > 0) {
     emit('updateMany', candidates);
@@ -284,6 +317,12 @@ function onDrop(e: DragEvent): void {
     <CanvasGrid
       :base-px="basePx"
       :visible="mode === 'edit'"
+    />
+    <SmartGuides
+      v-if="mode === 'edit'"
+      :active="guideActiveRect"
+      :others="guideOtherRects"
+      :base-px="basePx"
     />
     <WidgetFrame
       v-for="w in widgets"

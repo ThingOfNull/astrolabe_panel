@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 
+import { getEvents } from '@/api/events';
 import { getRpc } from '@/api/jsonrpc';
 import type { Rect, Widget } from '@/canvas/types';
 
@@ -24,7 +25,7 @@ export const useWidgetStore = defineStore('widgets', () => {
 
   async function create(input: Partial<Widget>): Promise<Widget> {
     const created = await getRpc().call<Widget>('widget.create', input as Record<string, unknown>);
-    widgets.value = [...widgets.value, created];
+    upsertLocal(created);
     return created;
   }
 
@@ -33,7 +34,7 @@ export const useWidgetStore = defineStore('widgets', () => {
       id,
       ...patch,
     } as Record<string, unknown>);
-    widgets.value = widgets.value.map((w) => (w.id === id ? updated : w));
+    upsertLocal(updated);
     return updated;
   }
 
@@ -64,11 +65,64 @@ export const useWidgetStore = defineStore('widgets', () => {
 
   async function remove(id: number): Promise<void> {
     await getRpc().call('widget.delete', { id });
+    removeLocal(id);
+  }
+
+  function upsertLocal(w: Widget): void {
+    const idx = widgets.value.findIndex((x) => x.id === w.id);
+    if (idx >= 0) {
+      const next = widgets.value.slice();
+      next[idx] = w;
+      widgets.value = next;
+    } else {
+      widgets.value = [...widgets.value, w];
+    }
+  }
+
+  function removeLocal(id: number): void {
     widgets.value = widgets.value.filter((w) => w.id !== id);
   }
 
-  return { widgets, loading, error, fetchAll, create, update, move, moveMany, remove };
+  /**
+   * Wire SSE events so other clients' edits (or server-side fixes) reflect
+   * locally without polling. Safe to call multiple times: each invocation
+   * returns a disposer for the handlers it installed.
+   */
+  function subscribeEvents(): () => void {
+    const ev = getEvents();
+    const offCreated = ev.on('widget.created', (payload) => {
+      if (isWidget(payload)) upsertLocal(payload);
+    });
+    const offChanged = ev.on('widget.changed', (payload) => {
+      if (isWidget(payload)) upsertLocal(payload);
+    });
+    const offDeleted = ev.on('widget.deleted', (payload) => {
+      if (payload && typeof payload.id === 'number') removeLocal(payload.id);
+    });
+    return () => {
+      offCreated();
+      offChanged();
+      offDeleted();
+    };
+  }
+
+  return {
+    widgets,
+    loading,
+    error,
+    fetchAll,
+    create,
+    update,
+    move,
+    moveMany,
+    remove,
+    subscribeEvents,
+  };
 });
+
+function isWidget(v: unknown): v is Widget {
+  return !!v && typeof v === 'object' && 'id' in (v as Record<string, unknown>);
+}
 
 function formatError(err: unknown): string {
   if (err && typeof err === 'object' && 'message' in err) {

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 
 import type { EntityListItem, EntityListPayload } from '@/api/types';
 import type { Widget } from '@/canvas/types';
@@ -14,6 +15,7 @@ const props = defineProps<{
   widget: Widget;
 }>();
 
+const { t } = useI18n();
 const metricStore = useMetricStore();
 
 const cfg = computed<StatusGridConfig>(() => (props.widget.config ?? {}) as StatusGridConfig);
@@ -39,7 +41,7 @@ function statusClass(s: EntityListItem['status']): string {
 }
 
 function tooltip(item: EntityListItem): string {
-  const parts = [`${item.label}`, `状态：${item.status}`];
+  const parts = [`${item.label}`, t('statusgrid.statusLabel', { status: item.status })];
   if (item.extra) {
     for (const [k, v] of Object.entries(item.extra)) {
       if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
@@ -76,7 +78,7 @@ function tooltip(item: EntityListItem): string {
         v-if="items.length === 0"
         class="col-span-full text-center text-[10px] text-[color:var(--astro-text-secondary)]"
       >
-        暂无实体
+        {{ t('statusgrid.empty') }}
       </p>
     </div>
     <div

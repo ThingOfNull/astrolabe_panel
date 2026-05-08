@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 
 import type { Widget } from '@/canvas/types';
 
 import ClockFlipDigit from './ClockFlipDigit.vue';
 import { defaultClockWidgetConfig, type ClockWidgetConfig } from './types';
+
+const { t: i18n } = useI18n();
 
 const props = defineProps<{
   widget: Widget;
@@ -146,7 +149,7 @@ const digitalMain = computed(() => {
 
 const tzHint = computed(() => {
   const t = (cfg.value.timezone ?? '').trim();
-  return t !== '' ? t : '本地';
+  return t !== '' ? t : i18n('clock.localTzFallback');
 });
 
 const flipDigitHeight = computed(() => Math.round(44 * scale.value));

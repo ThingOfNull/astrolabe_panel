@@ -95,7 +95,17 @@ func handleUploadPost(u *upload.Uploader) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"name": name, "url": "/uploads/" + name})
+
+		// Wallpaper kind: pre-compute the Aero glass tint so the SPA can apply
+		// it on first paint without downsampling the image client-side.
+		// Errors here are non-fatal — the upload still succeeds.
+		resp := gin.H{"name": name, "url": "/uploads/" + name}
+		if kind == "wallpaper" {
+			if tint, ok := extractWallpaperTint(data); ok {
+				resp["tint"] = tint
+			}
+		}
+		c.JSON(http.StatusOK, resp)
 	}
 }
 

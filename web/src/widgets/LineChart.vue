@@ -12,6 +12,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import type { TimeSeriesPayload } from '@/api/types';
 import type { Widget } from '@/canvas/types';
+import { useEChartsTheme } from '@/composables/useEChartsTheme';
 import { useMetricStore } from '@/stores/metric';
 import { normalizeThresholds, pickColor } from '@/widgets/thresholds';
 import type { Threshold } from '@/widgets/thresholds';
@@ -37,6 +38,7 @@ const props = defineProps<{
 }>();
 
 const metricStore = useMetricStore();
+const theme = useEChartsTheme();
 const containerRef = ref<HTMLDivElement | null>(null);
 let chart: echarts.ECharts | null = null;
 
@@ -57,35 +59,47 @@ function buildOption(): echarts.EChartsCoreOption {
     const tail = s.points[s.points.length - 1];
     if (tail && (last === null || tail[1] > last)) last = tail[1];
   }
-  const lineColor = pickColor(last, cfg.value.thresholds, '#00d4ff');
+  const t = theme.value;
+  const lineColor = pickColor(last, cfg.value.thresholds, t.accentBrand);
   const seriesData = allSeries.map((s, idx) => ({
     name: s.name,
     type: 'line' as const,
     showSymbol: false,
     smooth: cfg.value.smooth ?? true,
-    areaStyle: cfg.value.area_fill ? { opacity: 0.18 } : undefined,
+    areaStyle: cfg.value.area_fill
+      ? { color: idx === 0 ? lineColor : undefined, opacity: 0.18 }
+      : undefined,
     lineStyle: { color: idx === 0 ? lineColor : undefined, width: 2 },
     itemStyle: { color: idx === 0 ? lineColor : undefined },
-    data: s.points.map(([t, v]) => [t * 1000, v]),
+    data: s.points.map(([ptT, v]) => [ptT * 1000, v]),
   }));
   return {
     grid: { left: 36, right: 12, top: cfg.value.title ? 28 : 16, bottom: 24 },
     title: cfg.value.title
-      ? { text: cfg.value.title, left: 'center', textStyle: { color: '#aaa', fontSize: 12 } }
+      ? { text: cfg.value.title, left: 'center', textStyle: { color: t.textSecondary, fontSize: 12 } }
       : undefined,
-    legend: { textStyle: { color: '#888', fontSize: 10 }, top: cfg.value.title ? 4 : 0, left: 'center' },
-    tooltip: { trigger: 'axis' },
+    legend: {
+      textStyle: { color: t.textSecondary, fontSize: 10 },
+      top: cfg.value.title ? 4 : 0,
+      left: 'center',
+    },
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: t.surface,
+      borderColor: t.border,
+      textStyle: { color: t.textPrimary },
+    },
     xAxis: {
       type: 'time',
-      axisLine: { lineStyle: { color: 'rgba(255,255,255,0.2)' } },
-      axisLabel: { color: '#888', fontSize: 10 },
+      axisLine: { lineStyle: { color: t.splitLine } },
+      axisLabel: { color: t.textSecondary, fontSize: 10 },
     },
     yAxis: {
       type: 'value',
       name: ts?.unit ?? '',
-      nameTextStyle: { color: '#888' },
-      splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } },
-      axisLabel: { color: '#888', fontSize: 10 },
+      nameTextStyle: { color: t.textSecondary },
+      splitLine: { lineStyle: { color: t.splitLine } },
+      axisLabel: { color: t.textSecondary, fontSize: 10 },
     },
     series: seriesData,
   };
@@ -116,7 +130,7 @@ onBeforeUnmount(() => {
   }
 });
 
-watch([payload, cfg], render);
+watch([payload, cfg, theme], render, { deep: true });
 watch(() => [props.widget.w, props.widget.h], () => requestAnimationFrame(resize));
 </script>
 

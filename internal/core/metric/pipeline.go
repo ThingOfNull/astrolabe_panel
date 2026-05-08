@@ -18,6 +18,7 @@ import (
 
 	"astrolabe/internal/adapter"
 	"astrolabe/internal/core/datasource"
+	"astrolabe/internal/events"
 	"astrolabe/internal/store"
 )
 
@@ -40,6 +41,7 @@ type Response struct {
 type Pipeline struct {
 	manager *datasource.Manager
 	store   *store.Store
+	hub     *events.Hub // optional; enables metric.sample pushes
 
 	cacheTTL time.Duration
 
@@ -69,6 +71,10 @@ func New(mgr *datasource.Manager, s *store.Store) *Pipeline {
 		inflight: map[string]*inflightEntry{},
 	}
 }
+
+// SetHub attaches an event hub so the pipeline can push metric.sample
+// notifications on every fresh fetch (in-flight merged waiters do not rebroadcast).
+func (p *Pipeline) SetHub(h *events.Hub) { p.hub = h }
 
 // Fetch handles one widget query.
 func (p *Pipeline) Fetch(ctx context.Context, req Request) (Response, error) {
@@ -115,6 +121,23 @@ func (p *Pipeline) Fetch(ctx context.Context, req Request) (Response, error) {
 		p.cache[key] = cacheEntry{resp: resp, expire: time.Now().Add(p.cacheTTL)}
 	}
 	p.mu.Unlock()
+
+	// Broadcast fresh samples once per real fetch. In-flight waiters and cache
+	// hits intentionally skip this so we never amplify a single upstream call
+	// into N broadcast fan-outs.
+	if err == nil && p.hub != nil {
+		p.hub.Broadcast(events.Event{
+			Type: events.TypeMetricSample,
+			Payload: map[string]any{
+				"data_source_id": resp.DataSourceID,
+				"path":           resp.Path,
+				"shape":          resp.Shape,
+				"payload":        resp.Payload,
+				"cached_at":      resp.CachedAt,
+				"dim":            req.Query.Dim,
+			},
+		})
+	}
 	return resp, err
 }
 

@@ -20,6 +20,13 @@ export interface SmartLinkConfig {
   url: string;
   /** Default: icon left, text right. */
   layout?: 'horizontal' | 'vertical';
+  /**
+   * Preferred way to express which parts to render. Replaces the legacy
+   * triplet of show_icon/show_title/show_url booleans, which permitted the
+   * "nothing visible" combination. The legacy fields remain readable for
+   * backward compatibility (see resolveDisplayMode in SmartLink.vue).
+   */
+  display_mode?: 'icon_only' | 'title_only' | 'title_url' | 'url_only';
   show_icon?: boolean;
   show_title?: boolean;
   show_url?: boolean;
@@ -150,6 +157,13 @@ export const ACCEPTED_SHAPES: Record<string, Shape[]> = {
   line: ['TimeSeries'],
   bar: ['Categorical'],
   grid: ['EntityList'],
+  liquid: ['Scalar'],
+  radial3d: ['Scalar'],
+  heatmap: ['TimeSeries'],
+  sparkline: ['TimeSeries'],
+  bullet: ['Scalar'],
+  progress_ring: ['Scalar'],
+  timeline: ['EntityList'],
 };
 
 export function defaultAppearance(): WidgetAppearance {
@@ -158,9 +172,14 @@ export function defaultAppearance(): WidgetAppearance {
 
 export function defaultLinkConfig(): SmartLinkConfig {
   return {
-    title: '新链接',
+    // Empty title: rendering layer falls back to t('widget.default_title.link')
+    // so the stored config stays locale-neutral.
+    title: '',
     url: 'https://example.com',
     layout: 'horizontal',
+    display_mode: 'title_url',
+    // Legacy show_* still defaulted on so older code paths and any tooling
+    // that inspects the config keeps seeing the same shape.
     show_icon: true,
     show_title: true,
     show_url: true,
@@ -179,23 +198,23 @@ export function defaultSearchConfig(): AggregatedSearchConfig {
 }
 
 export function defaultGaugeConfig(): GaugeConfig {
-  return { title: '仪表盘', min: 0, max: 100, unit: '%' };
+  return { title: '', min: 0, max: 100, unit: '%' };
 }
 
 export function defaultBigNumberConfig(): BigNumberConfig {
-  return { title: '数值', precision: 1 };
+  return { title: '', precision: 1 };
 }
 
 export function defaultLineConfig(): LineConfig {
-  return { title: '折线图', smooth: true, area_fill: true };
+  return { title: '', smooth: true, area_fill: true };
 }
 
 export function defaultBarConfig(): BarConfig {
-  return { title: '柱状对比', horizontal: true, top_n: 10 };
+  return { title: '', horizontal: true, top_n: 10 };
 }
 
 export function defaultStatusGridConfig(): StatusGridConfig {
-  return { title: '状态矩阵', cell_min_px: 80 };
+  return { title: '', cell_min_px: 80 };
 }
 
 export function defaultTextWidgetConfig(): TextWidgetConfig {
@@ -221,7 +240,9 @@ export function defaultDividerWidgetConfig(): DividerWidgetConfig {
 export function defaultWeatherWidgetConfig(): WeatherWidgetConfig {
   return {
     city_id: 101010100,
-    city_label: '北京',
+    // city_label is a UI display cache only; leaving it empty lets locale
+    // lookup resolve to the localized name on first render.
+    city_label: '',
   };
 }
 

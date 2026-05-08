@@ -1,4 +1,5 @@
-// Package api wires HTTP routes: /healthz, /api/upload, /api/config, /api/weather, /ws, and SPA static fallback.
+// Package api wires HTTP routes: /healthz, /api/rpc, /api/events, /api/upload,
+// /api/config, /api/weather, and SPA static fallback.
 package api
 
 import (
@@ -13,8 +14,9 @@ import (
 	"astrolabe/internal/core/datasource"
 	"astrolabe/internal/core/upload"
 	staticembed "astrolabe/internal/embed"
+	"astrolabe/internal/events"
+	"astrolabe/internal/rpc"
 	"astrolabe/internal/store"
-	"astrolabe/internal/ws"
 )
 
 // BuildInfo is injected at startup for /healthz.
@@ -26,7 +28,8 @@ type BuildInfo struct {
 // Options aggregates dependencies for the HTTP router.
 type Options struct {
 	Logger    *slog.Logger
-	WS        *ws.Server
+	Registry  *rpc.Registry
+	Events    *events.Hub
 	Build     BuildInfo
 	UploadDir string
 	Uploader  *upload.Uploader
@@ -51,7 +54,13 @@ func New(opts Options) (*gin.Engine, error) {
 		})
 	})
 
-	r.GET("/ws", gin.WrapH(http.HandlerFunc(opts.WS.HandleHTTP)))
+	if opts.Registry != nil {
+		registerRPCRoutes(r, opts.Registry)
+		registerSchemaRoutes(r)
+	}
+	if opts.Events != nil {
+		registerEventRoutes(r, opts.Events)
+	}
 
 	registerWeatherRoutes(r, opts.Logger)
 

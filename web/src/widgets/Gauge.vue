@@ -7,6 +7,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import type { ScalarPayload } from '@/api/types';
 import type { Widget } from '@/canvas/types';
+import { useEChartsTheme } from '@/composables/useEChartsTheme';
 import { useMetricStore } from '@/stores/metric';
 import { normalizeThresholds, pickColor } from '@/widgets/thresholds';
 import type { GaugeConfig } from '@/widgets/types';
@@ -18,6 +19,7 @@ const props = defineProps<{
 }>();
 
 const metricStore = useMetricStore();
+const theme = useEChartsTheme();
 const containerRef = ref<HTMLDivElement | null>(null);
 let chart: echarts.ECharts | null = null;
 
@@ -43,24 +45,26 @@ function value(): number {
 
 function buildOption(): echarts.EChartsCoreOption {
   const v = value();
-  const accent = pickColor(v, cfg.value.thresholds, '#00d4ff');
-  // Map thresholds to ECharts axisLine gradient stops in [0..1].
+  const t = theme.value;
+  const accent = pickColor(v, cfg.value.thresholds, t.accentBrand);
   const range = Math.max(1, (cfg.value.max ?? 100) - (cfg.value.min ?? 0));
   const min = cfg.value.min ?? 0;
   const stops = (cfg.value.thresholds ?? [])
-    .map((t) => [Math.min(1, Math.max(0, (t.value - min) / range)), t.color] as [number, string])
+    .map((th) => [Math.min(1, Math.max(0, (th.value - min) / range)), th.color] as [number, string])
     .sort((a, b) => a[0] - b[0]);
-  // Ensure a stop at 1.0; synthesize segments if needed.
   const ranges: [number, string][] = [];
   let cursor = 0;
-  let prevColor = stops[0]?.[1] ?? 'rgba(0,212,255,0.4)';
+  // Base track uses a low-saturation mix of the accent so it stays legible
+  // on both dark and light surfaces.
+  const trackBase = `color-mix(in srgb, ${t.accentBrand} 28%, transparent)`;
+  let prevColor = stops[0]?.[1] ?? trackBase;
   for (const [pos, color] of stops) {
     if (pos > cursor) ranges.push([pos, prevColor]);
     prevColor = color;
     cursor = pos;
   }
   if (cursor < 1) ranges.push([1, prevColor]);
-  const axisLineColor = ranges.length > 0 ? ranges : [[1, 'rgba(0,212,255,0.4)']];
+  const axisLineColor = ranges.length > 0 ? ranges : [[1, trackBase]];
   return {
     series: [
       {
@@ -72,15 +76,27 @@ function buildOption(): echarts.EChartsCoreOption {
         progress: { show: true, width: 14, itemStyle: { color: accent } },
         axisLine: { lineStyle: { color: axisLineColor, width: 14 } },
         axisTick: { show: false },
-        axisLabel: { color: '#888', fontSize: 10 },
-        splitLine: { length: 8, lineStyle: { color: 'rgba(255,255,255,0.4)' } },
+        axisLabel: { color: t.textSecondary, fontSize: 10 },
+        splitLine: { length: 8, lineStyle: { color: t.splitLine } },
         pointer: { width: 4, itemStyle: { color: accent } },
-        anchor: { show: true, size: 14, itemStyle: { color: '#fff' } },
-        title: { show: !!cfg.value.title, fontSize: 12, color: '#aaa', offsetCenter: [0, '70%'] },
+        anchor: { show: true, size: 10, itemStyle: { color: t.textPrimary } },
+        title: {
+          show: !!cfg.value.title,
+          fontSize: 12,
+          color: t.textSecondary,
+          offsetCenter: [0, '70%'],
+        },
         detail: {
-          formatter: (v: number) => `${v.toFixed(1)}${cfg.value.unit ?? ''}`,
+          formatter: (val: number) => {
+            const d = 1;
+            const str = new Intl.NumberFormat(undefined, {
+              minimumFractionDigits: d,
+              maximumFractionDigits: d,
+            }).format(val);
+            return `${str}${cfg.value.unit ?? ''}`;
+          },
           fontSize: 22,
-          fontFamily: 'monospace',
+          fontFamily: 'JetBrains Mono, ui-monospace, monospace',
           color: accent,
           offsetCenter: [0, '40%'],
         },
@@ -115,7 +131,7 @@ onBeforeUnmount(() => {
   }
 });
 
-watch([payload, cfg], render);
+watch([payload, cfg, theme], render, { deep: true });
 watch(() => [props.widget.w, props.widget.h], () => requestAnimationFrame(resize));
 </script>
 
@@ -127,7 +143,7 @@ watch(() => [props.widget.w, props.widget.h], () => requestAnimationFrame(resize
     />
     <div
       v-if="errorMsg"
-      class="absolute inset-x-2 bottom-1 truncate rounded bg-red-700/40 px-2 py-1 text-[10px] text-red-100"
+      class="absolute inset-x-2 bottom-1 truncate rounded bg-red-700/40 px-2 py-1 text-[length:var(--fs-xs)] text-red-100"
       :title="errorMsg"
     >
       {{ errorMsg }}

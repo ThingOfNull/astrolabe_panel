@@ -4,9 +4,23 @@
 
 export type HttpUploadKind = 'icon' | 'wallpaper';
 
+/**
+ * Optional Aero glass tint precomputed by the server when uploading a
+ * wallpaper. Frontend stores it on board.theme_custom.glass_tint so first
+ * paint no longer needs the client-side `extractWallpaperTint` round-trip.
+ */
+export interface UploadedTint {
+  glass_bg: string;
+  border: string;
+  glow: string;
+  highlight: string;
+  average_hex: string;
+}
+
 export interface UploadedFileRef {
   name: string;
   url: string;
+  tint?: UploadedTint;
 }
 
 async function readApiError(res: Response): Promise<string> {

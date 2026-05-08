@@ -8,27 +8,28 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/gorilla/websocket"
-
 	"astrolabe/internal/core/datasource"
 	"astrolabe/internal/core/upload"
+	"astrolabe/internal/events"
+	"astrolabe/internal/rpc"
+	rpchandlers "astrolabe/internal/rpc/handlers"
 	"astrolabe/internal/store"
-	"astrolabe/internal/ws"
-	wshandlers "astrolabe/internal/ws/handlers"
 )
 
 func setupServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	reg := ws.NewRegistry()
-	wshandlers.RegisterSystem(reg)
-	wsServer := ws.NewServer(reg)
-	r, err := New(Options{WS: wsServer, Build: BuildInfo{Version: "test", Commit: "abc"}})
+	reg := rpc.NewRegistry()
+	rpchandlers.RegisterSystem(reg)
+	r, err := New(Options{
+		Registry: reg,
+		Events:   events.NewHub(),
+		Build:    BuildInfo{Version: "test", Commit: "abc"},
+	})
 	if err != nil {
 		t.Fatalf("New router: %v", err)
 	}
@@ -73,40 +74,149 @@ func TestSPAFallback(t *testing.T) {
 	}
 }
 
-func TestWSPing(t *testing.T) {
+// TestRPCPing exercises the new POST /api/rpc transport end-to-end.
+func TestRPCPing(t *testing.T) {
 	srv := setupServer(t)
 	defer srv.Close()
 
-	wsURL, _ := url.Parse(srv.URL)
-	wsURL.Scheme = "ws"
-	wsURL.Path = "/ws"
-
-	dialer := websocket.Dialer{HandshakeTimeout: 5 * time.Second}
-	conn, _, err := dialer.DialContext(context.Background(), wsURL.String(), nil)
+	body := bytes.NewBufferString(`{"jsonrpc":"2.0","id":1,"method":"ping"}`)
+	resp, err := http.Post(srv.URL+"/api/rpc", "application/json", body)
 	if err != nil {
-		t.Fatalf("dial ws: %v", err)
+		t.Fatalf("post rpc: %v", err)
 	}
-	defer conn.Close()
-
-	if err := conn.WriteMessage(websocket.TextMessage, []byte(`{"jsonrpc":"2.0","id":1,"method":"ping"}`)); err != nil {
-		t.Fatalf("write: %v", err)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
-	conn.SetReadDeadline(time.Now().Add(3 * time.Second))
-	_, raw, err := conn.ReadMessage()
-	if err != nil {
-		t.Fatalf("read: %v", err)
-	}
-	var resp struct {
+	var got struct {
 		Result struct {
 			Pong bool  `json:"pong"`
 			Ts   int64 `json:"ts"`
 		} `json:"result"`
 	}
-	if err := json.Unmarshal(raw, &resp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
 	}
-	if !resp.Result.Pong {
+	if !got.Result.Pong {
 		t.Errorf("pong = false")
+	}
+	if got.Result.Ts <= 0 {
+		t.Errorf("ts = %d", got.Result.Ts)
+	}
+}
+
+// TestRPCNotification ensures notifications yield 204 and do not produce an
+// error envelope.
+func TestRPCNotification(t *testing.T) {
+	srv := setupServer(t)
+	defer srv.Close()
+
+	body := bytes.NewBufferString(`{"jsonrpc":"2.0","method":"ping"}`)
+	resp, err := http.Post(srv.URL+"/api/rpc", "application/json", body)
+	if err != nil {
+		t.Fatalf("post rpc: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204", resp.StatusCode)
+	}
+}
+
+// TestSSEReceivesBroadcast verifies the /api/events SSE stream delivers a
+// JSON event published on the hub.
+func TestSSEReceivesBroadcast(t *testing.T) {
+	hub := events.NewHub()
+	reg := rpc.NewRegistry()
+	rpchandlers.RegisterSystem(reg)
+	r, err := New(Options{Registry: reg, Events: hub, Build: BuildInfo{Version: "t"}})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	srv := httptest.NewServer(r)
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/api/events", nil)
+	req.Header.Set("Accept", "text/event-stream")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("get events: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+
+	// Read the stream asynchronously: when the test context cancels, Body.Read
+	// returns and the goroutine exits.
+	type chunk struct {
+		text string
+		err  error
+	}
+	ch := make(chan chunk, 1)
+	go func() {
+		var all bytes.Buffer
+		buf := make([]byte, 1024)
+		for {
+			n, rerr := resp.Body.Read(buf)
+			if n > 0 {
+				all.Write(buf[:n])
+				if strings.Contains(all.String(), "event: probe.changed") {
+					ch <- chunk{text: all.String()}
+					return
+				}
+			}
+			if rerr != nil {
+				ch <- chunk{text: all.String(), err: rerr}
+				return
+			}
+		}
+	}()
+
+	// Give the handler a moment to install its subscription before broadcast.
+	time.Sleep(50 * time.Millisecond)
+	hub.Broadcast(events.Event{Type: events.TypeProbeChanged, Payload: map[string]any{"widget_id": 42, "status": "ok"}})
+
+	select {
+	case c := <-ch:
+		if !strings.Contains(c.text, "event: probe.changed") {
+			t.Fatalf("expected probe.changed in stream, got:\n%s", c.text)
+		}
+		if !strings.Contains(c.text, `"widget_id":42`) {
+			t.Errorf("payload missing widget_id=42: %q", c.text)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for SSE frame")
+	}
+}
+
+// TestSchemaEndpoint validates /api/schema/widgets surface.
+func TestSchemaEndpoint(t *testing.T) {
+	srv := setupServer(t)
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/api/schema/widgets")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	var schema struct {
+		Types          []string            `json:"types"`
+		AcceptedShapes map[string][]string `json:"accepted_shapes"`
+		IconTypes      []string            `json:"icon_types"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&schema); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(schema.Types) == 0 {
+		t.Fatal("types empty")
+	}
+	if _, ok := schema.AcceptedShapes["gauge"]; !ok {
+		t.Errorf("expected accepted_shapes.gauge, got %v", schema.AcceptedShapes)
 	}
 }
 
@@ -117,11 +227,11 @@ func TestHTTPUploadMultipart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("upload.New: %v", err)
 	}
-	reg := ws.NewRegistry()
-	wshandlers.RegisterSystem(reg)
-	wsServer := ws.NewServer(reg)
+	reg := rpc.NewRegistry()
+	rpchandlers.RegisterSystem(reg)
 	engine, err := New(Options{
-		WS:        wsServer,
+		Registry:  reg,
+		Events:    events.NewHub(),
 		Build:     BuildInfo{Version: "test", Commit: "api-upload"},
 		UploadDir: upDir,
 		Uploader:  uploader,
@@ -196,10 +306,11 @@ func setupServerWithStore(t *testing.T) *httptest.Server {
 	t.Cleanup(func() { _ = st.Close() })
 	mgr := datasource.NewManager(st, nil)
 	t.Cleanup(mgr.Close)
-	reg := ws.NewRegistry()
-	wshandlers.RegisterSystem(reg)
+	reg := rpc.NewRegistry()
+	rpchandlers.RegisterSystem(reg)
 	engine, err := New(Options{
-		WS:        ws.NewServer(reg),
+		Registry:  reg,
+		Events:    events.NewHub(),
 		Build:     BuildInfo{Version: "test", Commit: "api-config"},
 		Store:     st,
 		DSManager: mgr,

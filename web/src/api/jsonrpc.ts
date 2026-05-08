@@ -1,10 +1,18 @@
 /**
- * WebSocket JSON-RPC 2.0 client.
+ * JSON-RPC 2.0 client over HTTP (POST /api/rpc).
  *
- * - Auto-connect to ws(s)://host/ws; exponential backoff reconnect (1s..30s cap).
- * - Sends `ping` every 30s; 3 misses force close and reconnect.
- * - `call(method, params)` -> Promise; configurable timeout (default 15s).
- * - Exposes connection status for UI.
+ * Shape contract preserved from the previous WebSocket client so no caller has
+ * to change: `getRpc().call(method, params)` returns a Promise<T>, and
+ * `onStatus(listener)` fires with 'connecting' | 'connected' | 'disconnected'.
+ *
+ * Since HTTP is stateless the "status" concept is derived from the outcome of
+ * recent requests, not a socket lifecycle:
+ *  - start() does one cheap `ping` to confirm reachability → 'connected'
+ *  - any network/server error → 'disconnected' (listeners re-fire)
+ *  - any subsequent successful call → 'connected'
+ *
+ * This matches what existing consumers actually want — they re-hydrate when the
+ * transport becomes healthy, and back off when it's not.
  */
 
 export type RpcStatus = 'connecting' | 'connected' | 'disconnected';
@@ -22,65 +30,59 @@ export interface JsonRpcResponse<T = unknown> {
   error?: RpcError;
 }
 
-interface PendingCall {
-  resolve: (value: unknown) => void;
-  reject: (reason: RpcError | Error) => void;
-  timer: ReturnType<typeof setTimeout>;
-}
-
 export interface ClientOptions {
   url?: string;
-  heartbeatIntervalMs?: number;
+  /** Per-call timeout (ms). Longer than typical LAN latency so slow probes don't trip it. */
   callTimeoutMs?: number;
-  maxBackoffMs?: number;
+  /** Interval for background health check pings; set <=0 to disable. */
+  healthPingIntervalMs?: number;
 }
-
-const DEFAULTS = {
-  heartbeatIntervalMs: 30_000,
-  callTimeoutMs: 15_000,
-  maxBackoffMs: 30_000,
-  initialBackoffMs: 1_000,
-  missedHeartbeatLimit: 3,
-};
 
 type Listener = (status: RpcStatus) => void;
 
+const DEFAULT_TIMEOUT_MS = 15_000;
+const DEFAULT_HEALTH_PING_MS = 30_000;
+
 export class RpcClient {
   private url: string;
-  private ws: WebSocket | null = null;
   private nextId = 1;
-  private pending = new Map<number, PendingCall>();
   private status: RpcStatus = 'disconnected';
   private listeners = new Set<Listener>();
-
-  private reconnectAttempts = 0;
-  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  private missedHeartbeats = 0;
-
   private opts: Required<Omit<ClientOptions, 'url'>>;
+  private healthTimer: ReturnType<typeof setInterval> | null = null;
   private stopped = false;
 
   constructor(options: ClientOptions = {}) {
     this.url = options.url ?? defaultUrl();
     this.opts = {
-      heartbeatIntervalMs: options.heartbeatIntervalMs ?? DEFAULTS.heartbeatIntervalMs,
-      callTimeoutMs: options.callTimeoutMs ?? DEFAULTS.callTimeoutMs,
-      maxBackoffMs: options.maxBackoffMs ?? DEFAULTS.maxBackoffMs,
+      callTimeoutMs: options.callTimeoutMs ?? DEFAULT_TIMEOUT_MS,
+      healthPingIntervalMs: options.healthPingIntervalMs ?? DEFAULT_HEALTH_PING_MS,
     };
   }
 
+  /**
+   * Bootstraps the "connection" by doing one ping so consumers get a 'connected'
+   * event on mount, matching the WS client's behavior. Idempotent.
+   */
   start(): void {
     this.stopped = false;
-    this.connect();
+    this.setStatus('connecting');
+    void this.call('ping').catch(() => {
+      // status transition already happened in call()
+    });
+    if (this.opts.healthPingIntervalMs > 0 && !this.healthTimer) {
+      this.healthTimer = setInterval(() => {
+        if (this.stopped) return;
+        void this.call('ping').catch(() => undefined);
+      }, this.opts.healthPingIntervalMs);
+    }
   }
 
   stop(): void {
     this.stopped = true;
-    this.clearTimers();
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
+    if (this.healthTimer) {
+      clearInterval(this.healthTimer);
+      this.healthTimer = null;
     }
     this.setStatus('disconnected');
   }
@@ -95,154 +97,65 @@ export class RpcClient {
     return () => this.listeners.delete(listener);
   }
 
-  call<T = unknown>(method: string, params: Record<string, unknown> = {}): Promise<T> {
-    return new Promise<T>((resolve, reject) => {
-      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-        reject(new Error('rpc: not connected'));
-        return;
-      }
-      const id = this.nextId++;
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        reject(new Error(`rpc: call ${method} timed out`));
-      }, this.opts.callTimeoutMs);
-      this.pending.set(id, {
-        resolve: (value) => resolve(value as T),
-        reject,
-        timer,
+  async call<T = unknown>(method: string, params: Record<string, unknown> = {}): Promise<T> {
+    const id = this.nextId++;
+    const payload = { jsonrpc: '2.0', id, method, params };
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.opts.callTimeoutMs);
+    let res: Response;
+    try {
+      res = await fetch(this.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        credentials: 'same-origin',
+        signal: controller.signal,
       });
-      const payload = { jsonrpc: '2.0', id, method, params };
-      try {
-        this.ws.send(JSON.stringify(payload));
-      } catch (err) {
-        clearTimeout(timer);
-        this.pending.delete(id);
-        reject(err instanceof Error ? err : new Error(String(err)));
-      }
-    });
-  }
-
-  private connect(): void {
-    if (this.stopped) {
-      return;
-    }
-    this.setStatus('connecting');
-    let ws: WebSocket;
-    try {
-      ws = new WebSocket(this.url);
     } catch (err) {
-      console.warn('[rpc] websocket construct failed', err);
-      this.scheduleReconnect();
-      return;
-    }
-    this.ws = ws;
-
-    ws.onopen = () => {
-      this.reconnectAttempts = 0;
-      this.missedHeartbeats = 0;
-      this.setStatus('connected');
-      this.startHeartbeat();
-    };
-
-    ws.onmessage = (event) => {
-      this.handleMessage(event.data);
-    };
-
-    ws.onerror = (event) => {
-      console.warn('[rpc] websocket error', event);
-    };
-
-    ws.onclose = () => {
-      this.cleanupSocket();
+      clearTimeout(timer);
       this.setStatus('disconnected');
-      this.scheduleReconnect();
-    };
-  }
-
-  private cleanupSocket(): void {
-    this.clearHeartbeat();
-    for (const [id, pc] of this.pending.entries()) {
-      clearTimeout(pc.timer);
-      pc.reject(new Error('rpc: connection closed'));
-      this.pending.delete(id);
+      throw networkError(method, err);
     }
-  }
+    clearTimeout(timer);
 
-  private scheduleReconnect(): void {
-    if (this.stopped || this.reconnectTimer) {
-      return;
+    // 204 is reserved for notifications; we always send an id so this is unexpected.
+    if (res.status === 204) {
+      this.setStatus('connected');
+      return undefined as T;
     }
-    const delay = Math.min(
-      DEFAULTS.initialBackoffMs * 2 ** this.reconnectAttempts,
-      this.opts.maxBackoffMs,
-    );
-    this.reconnectAttempts += 1;
-    this.reconnectTimer = setTimeout(() => {
-      this.reconnectTimer = null;
-      this.connect();
-    }, delay);
-  }
 
-  private handleMessage(raw: unknown): void {
-    if (typeof raw !== 'string') {
-      return;
+    if (!res.ok) {
+      // Non-2xx usually means the body is still a JSON-RPC error envelope
+      // (e.g. 400 "empty body"); try to parse for a structured error first.
+      let body: JsonRpcResponse<T> | undefined;
+      try {
+        body = (await res.json()) as JsonRpcResponse<T>;
+      } catch {
+        /* fall through */
+      }
+      if (body?.error) {
+        this.setStatus('connected'); // server answered → transport healthy
+        throw body.error;
+      }
+      this.setStatus('disconnected');
+      throw Object.assign(new Error(`rpc: http ${res.status} on ${method}`), {
+        code: res.status,
+      });
     }
-    let resp: JsonRpcResponse;
+
+    let envelope: JsonRpcResponse<T>;
     try {
-      resp = JSON.parse(raw) as JsonRpcResponse;
+      envelope = (await res.json()) as JsonRpcResponse<T>;
     } catch (err) {
-      console.warn('[rpc] parse response failed', err, raw);
-      return;
+      this.setStatus('disconnected');
+      throw networkError(method, err);
     }
-    if (typeof resp.id !== 'number') {
-      return;
-    }
-    const pending = this.pending.get(resp.id);
-    if (!pending) {
-      return;
-    }
-    this.pending.delete(resp.id);
-    clearTimeout(pending.timer);
-    if (resp.error) {
-      pending.reject(resp.error);
-    } else {
-      pending.resolve(resp.result);
-    }
-  }
 
-  private startHeartbeat(): void {
-    this.clearHeartbeat();
-    this.heartbeatTimer = setInterval(() => {
-      this.call<{ pong: boolean; ts: number }>('ping')
-        .then(() => {
-          this.missedHeartbeats = 0;
-        })
-        .catch(() => {
-          this.missedHeartbeats += 1;
-          if (this.missedHeartbeats >= DEFAULTS.missedHeartbeatLimit) {
-            console.warn('[rpc] heartbeat missed limit reached, reconnecting');
-            this.missedHeartbeats = 0;
-            if (this.ws) {
-              this.ws.close();
-            }
-          }
-        });
-    }, this.opts.heartbeatIntervalMs);
-  }
-
-  private clearHeartbeat(): void {
-    if (this.heartbeatTimer) {
-      clearInterval(this.heartbeatTimer);
-      this.heartbeatTimer = null;
+    this.setStatus('connected');
+    if (envelope.error) {
+      throw envelope.error;
     }
-  }
-
-  private clearTimers(): void {
-    this.clearHeartbeat();
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
+    return envelope.result as T;
   }
 
   private setStatus(next: RpcStatus): void {
@@ -256,12 +169,16 @@ export class RpcClient {
   }
 }
 
+function networkError(method: string, err: unknown): RpcError {
+  const msg = err instanceof Error ? err.message : String(err);
+  return { code: 0, message: `rpc: ${method} transport failed: ${msg}` };
+}
+
 function defaultUrl(): string {
   if (typeof window === 'undefined') {
-    return 'ws://127.0.0.1:8080/ws';
+    return 'http://127.0.0.1:8080/api/rpc';
   }
-  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${proto}//${window.location.host}/ws`;
+  return `${window.location.origin}/api/rpc`;
 }
 
 let singleton: RpcClient | null = null;

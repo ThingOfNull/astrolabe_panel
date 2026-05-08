@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 
 import type { MetricNode, MetricQuery, Shape } from '@/api/types';
 import type { Widget } from '@/canvas/types';
@@ -54,6 +55,7 @@ const emit = defineEmits<{
 type Tab = 'basic' | 'data' | 'style';
 const tab = ref<Tab>('basic');
 
+const { t } = useI18n();
 const dsStore = useDataSourceStore();
 
 const linkForm = ref<SmartLinkConfig>(defaultLinkConfig());
@@ -228,17 +230,33 @@ function close(): void {
 }
 
 function validateSmartLink(cfg: SmartLinkConfig): string | null {
+  // display_mode (preferred) always represents at least one visible element.
+  if (
+    cfg.display_mode === 'icon_only' ||
+    cfg.display_mode === 'title_only' ||
+    cfg.display_mode === 'title_url' ||
+    cfg.display_mode === 'url_only'
+  ) {
+    if (cfg.display_mode === 'title_only' && !String(cfg.title ?? '').trim()) {
+      return t('widgetEdit.validationEmpty');
+    }
+    if (cfg.display_mode === 'url_only' && !String(cfg.url ?? '').trim()) {
+      return t('widgetEdit.validationEmpty');
+    }
+    return null;
+  }
+  // Legacy triplet path.
   const showI = cfg.show_icon !== false;
   const showT = cfg.show_title !== false;
   const showU = cfg.show_url !== false;
   if (!showI && !showT && !showU) {
-    return '请至少显示图标、标题、URL 中的一项';
+    return t('widgetEdit.validationLinkVisibility');
   }
   const titleFilled = String(cfg.title ?? '').trim().length > 0;
   const urlFilled = String(cfg.url ?? '').trim().length > 0;
   const hasVisible = showI || (showT && titleFilled) || (showU && urlFilled);
   if (!hasVisible) {
-    return '当前配置下没有可见内容：请填写标题或 URL，或显示图标';
+    return t('widgetEdit.validationEmpty');
   }
   return null;
 }
@@ -355,7 +373,7 @@ function onMetricSelect(payload: { node: MetricNode; shape: Shape }): void {
 function addEngine(): void {
   searchForm.value.engines.push({
     id: `engine-${Date.now()}`,
-    label: '新引擎',
+    label: t('widgetEdit.engineLabelNew'),
     url: 'https://example.com/?q={q}',
     icon: { type: 'ICONIFY', value: 'mdi:magnify' },
   });
@@ -375,14 +393,14 @@ function removeEngine(id: string): void {
     <div class="astro-glass max-h-[80vh] w-[640px] overflow-hidden flex flex-col">
       <header class="flex items-center justify-between border-b border-[color:var(--astro-glass-border)] px-5 py-3">
         <h3 class="text-base font-semibold">
-          编辑组件 #{{ widget.id }}（{{ widget.type }}）
+          {{ t('widgetEdit.title', { id: widget.id, type: widget.type }) }}
         </h3>
         <button
           type="button"
           class="text-sm text-[color:var(--astro-text-secondary)] hover:text-[color:var(--astro-text-primary)]"
           @click="close"
         >
-          关闭
+          {{ t('widgetEdit.close') }}
         </button>
       </header>
 
@@ -393,7 +411,7 @@ function removeEngine(id: string): void {
           :class="tab === 'basic' ? 'bg-white/10' : 'hover:bg-white/5'"
           @click="tab = 'basic'"
         >
-          基础
+          {{ t('widgetEdit.tabBasic') }}
         </button>
         <button
           v-if="isDataWidget"
@@ -402,7 +420,7 @@ function removeEngine(id: string): void {
           :class="tab === 'data' ? 'bg-white/10' : 'hover:bg-white/5'"
           @click="tab = 'data'"
         >
-          数据
+          {{ t('widgetEdit.tabData') }}
         </button>
         <button
           type="button"
@@ -410,7 +428,7 @@ function removeEngine(id: string): void {
           :class="tab === 'style' ? 'bg-white/10' : 'hover:bg-white/5'"
           @click="tab = 'style'"
         >
-          样式
+          {{ t('widgetEdit.tabStyle') }}
         </button>
       </nav>
 
@@ -420,7 +438,7 @@ function removeEngine(id: string): void {
           class="space-y-4 text-sm"
         >
           <label class="block">
-            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">标题</span>
+            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.titleField') }}</span>
             <input
               v-model="linkForm.title"
               type="text"
@@ -428,7 +446,7 @@ function removeEngine(id: string): void {
             >
           </label>
           <label class="block">
-            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">URL（仅支持 http/https）</span>
+            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.urlField') }}</span>
             <input
               v-model="linkForm.url"
               type="url"
@@ -440,22 +458,22 @@ function removeEngine(id: string): void {
               v-model="linkForm.open_in_new_tab"
               type="checkbox"
             >
-            <span>在新标签页中打开</span>
+            <span>{{ t('widgetEdit.openNewTab') }}</span>
           </label>
           <fieldset class="rounded-md border border-[color:var(--astro-glass-border)] p-3">
             <legend class="px-1 text-xs text-[color:var(--astro-text-secondary)]">
-              探活
+              {{ t('widgetEdit.probe') }}
             </legend>
             <label class="flex items-center gap-2 text-sm">
               <input
                 v-model="linkForm.probe!.enabled"
                 type="checkbox"
               >
-              <span>启用</span>
+              <span>{{ t('widgetEdit.probeEnable') }}</span>
             </label>
             <div class="mt-2 grid grid-cols-2 gap-3">
               <label>
-                <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">类型</span>
+                <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.probeType') }}</span>
                 <select
                   v-model="linkForm.probe!.type"
                   class="w-full rounded-md border border-[color:var(--astro-glass-border)] bg-transparent px-2 py-1"
@@ -474,7 +492,7 @@ function removeEngine(id: string): void {
                 >
               </label>
               <label>
-                <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">间隔（秒）</span>
+                <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.probeInterval') }}</span>
                 <input
                   v-model.number="linkForm.probe!.interval_sec"
                   type="number"
@@ -483,7 +501,7 @@ function removeEngine(id: string): void {
                 >
               </label>
               <label>
-                <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">超时（秒）</span>
+                <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.probeTimeout') }}</span>
                 <input
                   v-model.number="linkForm.probe!.timeout_sec"
                   type="number"
@@ -500,7 +518,14 @@ function removeEngine(id: string): void {
           class="space-y-3 text-sm"
         >
           <p class="text-xs text-[color:var(--astro-text-secondary)]">
-            管理可切换的搜索引擎。引擎 URL 必须以 http/https 开头并包含 <code>{q}</code> 占位符。
+            <i18n-t
+              keypath="widgetEdit.engineIntro"
+              tag="span"
+            >
+              <template #placeholder>
+                <code>{q}</code>
+              </template>
+            </i18n-t>
           </p>
           <div class="space-y-2">
             <div
@@ -523,7 +548,7 @@ function removeEngine(id: string): void {
                 class="col-span-2 rounded bg-red-600/70 px-2 py-1 text-xs text-white hover:bg-red-600"
                 @click="removeEngine(engine.id)"
               >
-                删除
+                {{ t('widgetEdit.engineDelete') }}
               </button>
             </div>
           </div>
@@ -532,10 +557,10 @@ function removeEngine(id: string): void {
             class="rounded border border-[color:var(--astro-glass-border)] px-3 py-1 text-xs hover:bg-white/5"
             @click="addEngine"
           >
-            + 添加引擎
+            {{ t('widgetEdit.engineAdd') }}
           </button>
           <label class="block">
-            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">默认引擎 ID</span>
+            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.engineDefault') }}</span>
             <input
               v-model="searchForm.default_engine_id"
               type="text"
@@ -549,7 +574,7 @@ function removeEngine(id: string): void {
           class="space-y-3 text-sm"
         >
           <label class="block">
-            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">标题</span>
+            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.titleField') }}</span>
             <input
               v-model="gaugeForm.title"
               type="text"
@@ -558,7 +583,7 @@ function removeEngine(id: string): void {
           </label>
           <div class="grid grid-cols-3 gap-2">
             <label>
-              <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">最小值</span>
+              <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.gaugeMin') }}</span>
               <input
                 v-model.number="gaugeForm.min"
                 type="number"
@@ -566,7 +591,7 @@ function removeEngine(id: string): void {
               >
             </label>
             <label>
-              <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">最大值</span>
+              <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.gaugeMax') }}</span>
               <input
                 v-model.number="gaugeForm.max"
                 type="number"
@@ -574,7 +599,7 @@ function removeEngine(id: string): void {
               >
             </label>
             <label>
-              <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">单位</span>
+              <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.unit') }}</span>
               <input
                 v-model="gaugeForm.unit"
                 type="text"
@@ -590,7 +615,7 @@ function removeEngine(id: string): void {
           class="space-y-3 text-sm"
         >
           <label class="block">
-            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">标题</span>
+            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.titleField') }}</span>
             <input
               v-model="bignumberForm.title"
               type="text"
@@ -599,7 +624,7 @@ function removeEngine(id: string): void {
           </label>
           <div class="grid grid-cols-2 gap-2">
             <label>
-              <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">单位</span>
+              <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.unit') }}</span>
               <input
                 v-model="bignumberForm.unit"
                 type="text"
@@ -607,7 +632,7 @@ function removeEngine(id: string): void {
               >
             </label>
             <label>
-              <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">小数位数</span>
+              <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.decimals') }}</span>
               <input
                 v-model.number="bignumberForm.precision"
                 type="number"
@@ -625,7 +650,7 @@ function removeEngine(id: string): void {
           class="space-y-3 text-sm"
         >
           <label class="block">
-            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">标题</span>
+            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.titleField') }}</span>
             <input
               v-model="lineForm.title"
               type="text"
@@ -637,14 +662,14 @@ function removeEngine(id: string): void {
               v-model="lineForm.smooth"
               type="checkbox"
             >
-            <span class="text-xs">平滑曲线</span>
+            <span class="text-xs">{{ t('widgetEdit.smooth') }}</span>
           </label>
           <label class="flex items-center gap-2">
             <input
               v-model="lineForm.area_fill"
               type="checkbox"
             >
-            <span class="text-xs">面积填充</span>
+            <span class="text-xs">{{ t('widgetEdit.areaFill') }}</span>
           </label>
           <ThresholdsEditor v-model="lineForm.thresholds" />
         </div>
@@ -654,7 +679,7 @@ function removeEngine(id: string): void {
           class="space-y-3 text-sm"
         >
           <label class="block">
-            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">标题</span>
+            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.titleField') }}</span>
             <input
               v-model="barForm.title"
               type="text"
@@ -666,10 +691,10 @@ function removeEngine(id: string): void {
               v-model="barForm.horizontal"
               type="checkbox"
             >
-            <span class="text-xs">水平方向</span>
+            <span class="text-xs">{{ t('widgetEdit.horizontal') }}</span>
           </label>
           <label class="block">
-            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">仅展示前 N 项</span>
+            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.topN') }}</span>
             <input
               v-model.number="barForm.top_n"
               type="number"
@@ -686,7 +711,7 @@ function removeEngine(id: string): void {
           class="space-y-3 text-sm"
         >
           <label class="block">
-            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">标题</span>
+            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.titleField') }}</span>
             <input
               v-model="gridForm.title"
               type="text"
@@ -694,7 +719,7 @@ function removeEngine(id: string): void {
             >
           </label>
           <label class="block">
-            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">单元格最小宽度 (px)</span>
+            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.cellMinPx') }}</span>
             <input
               v-model.number="gridForm.cell_min_px"
               type="number"
@@ -711,7 +736,7 @@ function removeEngine(id: string): void {
         >
           <div>
             <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">
-              城市（按拼音排序，支持地名或拼音筛选）
+              {{ t('widgetEdit.weatherCity') }}
             </span>
             <CityPicker
               :model-value="weatherForm.city_id > 0 ? weatherForm.city_id : null"
@@ -721,7 +746,7 @@ function removeEngine(id: string): void {
               @pick-label="(label) => { weatherForm.city_label = label; }"
             />
             <p class="mt-2 text-[11px] text-[color:var(--astro-text-secondary)]">
-              数据来自魅族天气开放接口；无效或网络失败时界面以「--」占位。
+              {{ t('widgetEdit.weatherFooter') }}
             </p>
           </div>
         </div>
@@ -731,16 +756,16 @@ function removeEngine(id: string): void {
           class="space-y-3 text-sm"
         >
           <label class="block">
-            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">风格</span>
+            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.clockVariant') }}</span>
             <select
               v-model="clockForm.variant"
               class="w-full rounded-md border border-[color:var(--astro-glass-border)] bg-transparent px-3 py-2"
             >
               <option value="digital">
-                普通数字
+                {{ t('widgetEdit.clockDigital') }}
               </option>
               <option value="flip">
-                翻页数字
+                {{ t('widgetEdit.clockFlip') }}
               </option>
             </select>
           </label>
@@ -749,31 +774,31 @@ function removeEngine(id: string): void {
               v-model="clockForm.show_seconds"
               type="checkbox"
             >
-            <span>显示秒</span>
+            <span>{{ t('widgetEdit.clockShowSec') }}</span>
           </label>
           <label class="flex items-center gap-2">
             <input
               v-model="clockForm.show_date"
               type="checkbox"
             >
-            <span>显示日期（中文星期）</span>
+            <span>{{ t('widgetEdit.clockShowDate') }}</span>
           </label>
           <label class="flex items-center gap-2">
             <input
               v-model="clockForm.use_24h"
               type="checkbox"
             >
-            <span>24 小时制</span>
+            <span>{{ t('widgetEdit.clock24h') }}</span>
           </label>
           <label class="block">
             <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">
-              IANA 时区（留空为浏览器本地，如 Asia/Shanghai、Europe/Berlin、UTC）
+              {{ t('widgetEdit.clockTimezone') }}
             </span>
             <input
               v-model.trim="clockForm.timezone"
               type="text"
               class="w-full rounded-md border border-[color:var(--astro-glass-border)] bg-transparent px-3 py-2"
-              placeholder="留空或 Asia/Shanghai"
+              :placeholder="t('widgetEdit.clockTimezonePlaceholder')"
               autocomplete="off"
             >
           </label>
@@ -784,7 +809,7 @@ function removeEngine(id: string): void {
           class="space-y-3 text-sm"
         >
           <label class="block">
-            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">内容</span>
+            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.textContent') }}</span>
             <textarea
               v-model="textForm.content"
               rows="6"
@@ -793,7 +818,7 @@ function removeEngine(id: string): void {
           </label>
           <div class="grid grid-cols-2 gap-2">
             <label>
-              <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">字号</span>
+              <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.textFontSize') }}</span>
               <input
                 v-model="textForm.font_size"
                 type="text"
@@ -801,7 +826,7 @@ function removeEngine(id: string): void {
               >
             </label>
             <label>
-              <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">字重</span>
+              <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.textFontWeight') }}</span>
               <input
                 v-model="textForm.font_weight"
                 type="text"
@@ -810,7 +835,7 @@ function removeEngine(id: string): void {
             </label>
           </div>
           <label class="block">
-            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">颜色（留空用主题主文字色）</span>
+            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.textColor') }}</span>
             <div class="flex gap-2">
               <input
                 v-model="textForm.color"
@@ -825,33 +850,33 @@ function removeEngine(id: string): void {
             </div>
           </label>
           <label class="block">
-            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">对齐</span>
+            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.textAlign') }}</span>
             <select
               v-model="textForm.text_align"
               class="w-full rounded-md border border-[color:var(--astro-glass-border)] bg-transparent px-3 py-2"
             >
               <option value="left">
-                左
+                {{ t('widgetEdit.alignLeft') }}
               </option>
               <option value="center">
-                中
+                {{ t('widgetEdit.alignCenter') }}
               </option>
               <option value="right">
-                右
+                {{ t('widgetEdit.alignRight') }}
               </option>
             </select>
           </label>
           <label class="block">
-            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">文字方向</span>
+            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.textOrientation') }}</span>
             <select
               v-model="textForm.orientation"
               class="w-full rounded-md border border-[color:var(--astro-glass-border)] bg-transparent px-3 py-2"
             >
               <option value="horizontal">
-                横排
+                {{ t('widgetEdit.orientHoriz') }}
               </option>
               <option value="vertical">
-                竖排
+                {{ t('widgetEdit.orientVert') }}
               </option>
             </select>
           </label>
@@ -862,21 +887,21 @@ function removeEngine(id: string): void {
           class="space-y-3 text-sm"
         >
           <label class="block">
-            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">方向</span>
+            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.dividerOrientation') }}</span>
             <select
               v-model="dividerForm.orientation"
               class="w-full rounded-md border border-[color:var(--astro-glass-border)] bg-transparent px-3 py-2"
             >
               <option value="horizontal">
-                水平
+                {{ t('widgetEdit.dividerH') }}
               </option>
               <option value="vertical">
-                竖直
+                {{ t('widgetEdit.dividerV') }}
               </option>
             </select>
           </label>
           <label class="block">
-            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">线宽 (px)</span>
+            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.dividerThickness') }}</span>
             <input
               v-model.number="dividerForm.thickness"
               type="number"
@@ -886,24 +911,24 @@ function removeEngine(id: string): void {
             >
           </label>
           <label class="block">
-            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">样式</span>
+            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.dividerStyle') }}</span>
             <select
               v-model="dividerForm.line_style"
               class="w-full rounded-md border border-[color:var(--astro-glass-border)] bg-transparent px-3 py-2"
             >
               <option value="solid">
-                实线
+                {{ t('widgetEdit.lineSolid') }}
               </option>
               <option value="dashed">
-                虚线
+                {{ t('widgetEdit.lineDashed') }}
               </option>
               <option value="dotted">
-                点线
+                {{ t('widgetEdit.lineDotted') }}
               </option>
             </select>
           </label>
           <label class="block">
-            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">颜色（留空用边框色）</span>
+            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.dividerColor') }}</span>
             <div class="flex gap-2">
               <input
                 v-model="dividerForm.color"
@@ -924,13 +949,13 @@ function removeEngine(id: string): void {
           class="space-y-3 text-sm"
         >
           <label class="block">
-            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">数据源</span>
+            <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.dataSource') }}</span>
             <select
               :value="dataDsId ?? ''"
               class="w-full rounded-md border border-[color:var(--astro-glass-border)] bg-transparent px-3 py-2"
               @change="onDataSourceChange(Number(($event.target as HTMLSelectElement).value))"
             >
-              <option value="">— 请选择 —</option>
+              <option value="">{{ t('widgetEdit.dataSourcePlaceholder') }}</option>
               <option
                 v-for="d in dsStore.items"
                 :key="d.id"
@@ -944,10 +969,10 @@ function removeEngine(id: string): void {
             v-if="dsStore.items.length === 0"
             class="text-xs text-amber-300"
           >
-            还没有数据源。请先在右侧 "数据源" Tab 中添加。
+            {{ t('widgetEdit.dataNoSource') }}
           </p>
           <p class="text-xs text-[color:var(--astro-text-secondary)]">
-            仅显示与当前组件兼容的形态：<span class="font-mono">{{ acceptedShape }}</span>
+            {{ t('widgetEdit.dataShapeNote') }}<span class="font-mono">{{ acceptedShape }}</span>
           </p>
           <div
             v-if="dataDsId && dsStore.trees[dataDsId]"
@@ -964,7 +989,7 @@ function removeEngine(id: string): void {
             v-if="dataMetricQuery"
             class="rounded bg-white/5 px-3 py-2 text-xs"
           >
-            已选：<span class="font-mono">{{ dataMetricQuery.path }}</span>
+            {{ t('widgetEdit.dataSelected') }}<span class="font-mono">{{ dataMetricQuery.path }}</span>
             <span class="ml-2 text-[color:var(--astro-text-secondary)]">{{ dataMetricQuery.shape }}</span>
           </div>
         </div>
@@ -977,76 +1002,67 @@ function removeEngine(id: string): void {
           <IconPicker v-model="iconModel" />
           <template v-if="isLink">
             <label class="block">
-              <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">排版</span>
+              <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.linkLayout') }}</span>
               <select
                 v-model="linkForm.layout"
                 class="w-full rounded-md border border-[color:var(--astro-glass-border)] bg-transparent px-3 py-2"
               >
                 <option value="horizontal">
-                  横向（图标在左）
+                  {{ t('widgetEdit.linkLayoutHoriz') }}
                 </option>
                 <option value="vertical">
-                  纵向
+                  {{ t('widgetEdit.linkLayoutVert') }}
                 </option>
               </select>
             </label>
             <fieldset class="rounded-md border border-[color:var(--astro-glass-border)] p-3">
               <legend class="px-1 text-xs text-[color:var(--astro-text-secondary)]">
-                可见项
+                {{ t('widgetEdit.linkVisible') }}
               </legend>
-              <label class="flex items-center gap-2">
-                <input
-                  v-model="linkForm.show_icon"
-                  type="checkbox"
+              <label class="block">
+                <span class="mb-1 block text-xs text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.linkDisplayMode') }}</span>
+                <select
+                  v-model="linkForm.display_mode"
+                  class="w-full rounded-md border border-[color:var(--astro-glass-border)] bg-transparent px-2 py-1.5"
                 >
-                <span>显示图标</span>
-              </label>
-              <label class="flex items-center gap-2">
-                <input
-                  v-model="linkForm.show_title"
-                  type="checkbox"
-                >
-                <span>显示标题</span>
-              </label>
-              <label class="flex items-center gap-2">
-                <input
-                  v-model="linkForm.show_url"
-                  type="checkbox"
-                >
-                <span>显示 URL</span>
+                  <option value="icon_only">{{ t('widgetEdit.linkDisplayMode_icon_only') }}</option>
+                  <option value="title_only">{{ t('widgetEdit.linkDisplayMode_title_only') }}</option>
+                  <option value="title_url">{{ t('widgetEdit.linkDisplayMode_title_url') }}</option>
+                  <option value="url_only">{{ t('widgetEdit.linkDisplayMode_url_only') }}</option>
+                </select>
               </label>
               <p class="mt-2 text-[11px] text-[color:var(--astro-text-secondary)]">
-                至少开启一项；保存时会校验是否存在可见内容（标题或 URL 非空，或显示图标）。
+                {{ t('widgetEdit.linkVisibleHint') }}
               </p>
             </fieldset>
             <p class="text-xs text-[color:var(--astro-text-secondary)]">
-              链接标题与 URL 正文样式（留空字号/颜色则跟随主题）。
+              {{ t('widgetEdit.linkStyleHint') }}
             </p>
             <fieldset class="rounded-md border border-[color:var(--astro-glass-border)] p-3">
               <legend class="px-1 text-xs text-[color:var(--astro-text-secondary)]">
-                标题
+                {{ t('widgetEdit.linkTitleLegend') }}
               </legend>
               <div class="grid grid-cols-3 gap-2">
                 <label class="col-span-1">
-                  <span class="mb-1 block text-[11px] text-[color:var(--astro-text-secondary)]">字号</span>
+                  <span class="mb-1 block text-[11px] text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.fontSize') }}</span>
                   <input
                     v-model="linkForm.title_style.font_size"
                     type="text"
-                    placeholder="如 14px"
+                    :placeholder="t('widgetEdit.fontSizePlaceholder')"
                     class="w-full rounded border border-[color:var(--astro-glass-border)] bg-transparent px-2 py-1 text-xs"
                   >
                 </label>
                 <label class="col-span-1">
-                  <span class="mb-1 block text-[11px] text-[color:var(--astro-text-secondary)]">字重</span>
+                  <span class="mb-1 block text-[11px] text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.fontWeight') }}</span>
                   <input
                     v-model="linkForm.title_style.font_weight"
                     type="text"
-                    placeholder="400 / 600"
+                    :placeholder="t('widgetEdit.fontWeightPlaceholder')"
                     class="w-full rounded border border-[color:var(--astro-glass-border)] bg-transparent px-2 py-1 text-xs"
                   >
                 </label>
                 <label class="col-span-1">
-                  <span class="mb-1 block text-[11px] text-[color:var(--astro-text-secondary)]">颜色</span>
+                  <span class="mb-1 block text-[11px] text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.color') }}</span>
                   <div class="flex gap-1">
                     <input
                       v-model="linkForm.title_style.color"
@@ -1056,7 +1072,7 @@ function removeEngine(id: string): void {
                     <input
                       v-model="linkForm.title_style.color"
                       type="text"
-                      placeholder="#fff 或留空"
+                      :placeholder="t('widgetEdit.colorPlaceholderTitle')"
                       class="flex-1 rounded border border-[color:var(--astro-glass-border)] bg-transparent px-2 py-1 text-xs"
                     >
                   </div>
@@ -1065,29 +1081,29 @@ function removeEngine(id: string): void {
             </fieldset>
             <fieldset class="rounded-md border border-[color:var(--astro-glass-border)] p-3">
               <legend class="px-1 text-xs text-[color:var(--astro-text-secondary)]">
-                URL
+                {{ t('widgetEdit.linkUrlLegend') }}
               </legend>
               <div class="grid grid-cols-3 gap-2">
                 <label class="col-span-1">
-                  <span class="mb-1 block text-[11px] text-[color:var(--astro-text-secondary)]">字号</span>
+                  <span class="mb-1 block text-[11px] text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.fontSize') }}</span>
                   <input
                     v-model="linkForm.url_style.font_size"
                     type="text"
-                    placeholder="如 12px"
+                    :placeholder="t('widgetEdit.fontSizePlaceholder')"
                     class="w-full rounded border border-[color:var(--astro-glass-border)] bg-transparent px-2 py-1 text-xs"
                   >
                 </label>
                 <label class="col-span-1">
-                  <span class="mb-1 block text-[11px] text-[color:var(--astro-text-secondary)]">字重</span>
+                  <span class="mb-1 block text-[11px] text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.fontWeight') }}</span>
                   <input
                     v-model="linkForm.url_style.font_weight"
                     type="text"
-                    placeholder="400"
+                    :placeholder="t('widgetEdit.fontWeightPlaceholder')"
                     class="w-full rounded border border-[color:var(--astro-glass-border)] bg-transparent px-2 py-1 text-xs"
                   >
                 </label>
                 <label class="col-span-1">
-                  <span class="mb-1 block text-[11px] text-[color:var(--astro-text-secondary)]">颜色</span>
+                  <span class="mb-1 block text-[11px] text-[color:var(--astro-text-secondary)]">{{ t('widgetEdit.color') }}</span>
                   <div class="flex gap-1">
                     <input
                       v-model="linkForm.url_style.color"
@@ -1097,7 +1113,7 @@ function removeEngine(id: string): void {
                     <input
                       v-model="linkForm.url_style.color"
                       type="text"
-                      placeholder="留空用次要文字色"
+                      :placeholder="t('widgetEdit.colorPlaceholderUrl')"
                       class="flex-1 rounded border border-[color:var(--astro-glass-border)] bg-transparent px-2 py-1 text-xs"
                     >
                   </div>
@@ -1114,14 +1130,14 @@ function removeEngine(id: string): void {
           class="astro-btn-icon rounded-md border border-[color:var(--astro-glass-border)] px-4 py-1.5 text-sm hover:bg-white/5 hover:shadow-md"
           @click="close"
         >
-          取消
+          {{ t('widgetEdit.cancel') }}
         </button>
         <button
           type="button"
           class="astro-btn-icon rounded-md bg-[color:var(--astro-accent)] px-4 py-1.5 text-sm text-black hover:brightness-110 active:brightness-95"
           @click="submit"
         >
-          保存
+          {{ t('widgetEdit.save') }}
         </button>
       </footer>
     </div>

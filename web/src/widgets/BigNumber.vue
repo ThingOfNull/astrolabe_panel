@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 
+import Metric from '@/components/Metric.vue';
 import type { Widget } from '@/canvas/types';
 import { useMetricStore } from '@/stores/metric';
 import { normalizeThresholds, pickColor } from '@/widgets/thresholds';
@@ -25,11 +26,10 @@ const cfg = computed<BigNumberConfig>(() => {
 const payload = computed(() => metricStore.payloadOf(props.widget.id));
 const errorMsg = computed(() => metricStore.errorOf(props.widget.id));
 
-const display = computed<string>(() => {
+const scalarValue = computed<number | null>(() => {
   const p = payload.value;
-  if (!p || p.shape !== 'Scalar' || !p.scalar) return '—';
-  const v = p.scalar.value;
-  return v.toFixed(Math.max(0, cfg.value.precision ?? 1));
+  if (!p || p.shape !== 'Scalar' || !p.scalar) return null;
+  return p.scalar.value;
 });
 
 const unit = computed<string>(() => {
@@ -38,31 +38,42 @@ const unit = computed<string>(() => {
   return p?.scalar?.unit ?? '';
 });
 
+// Widget-relative sizing: pick Metric size tier by the widget's actual grid
+// footprint rather than viewport width. Small widgets get a compact hero
+// number; large widgets pour into the display tier.
+const metricSize = computed<'md' | 'lg' | 'xl' | 'display'>(() => {
+  const area = (props.widget.w ?? 16) * (props.widget.h ?? 10);
+  if (area >= 384) return 'display';
+  if (area >= 200) return 'xl';
+  if (area >= 120) return 'lg';
+  return 'md';
+});
+
 const valueColor = computed<string>(() => {
-  const p = payload.value;
-  const raw = p?.scalar?.value;
-  return pickColor(raw ?? null, cfg.value.thresholds, 'var(--astro-text-primary)');
+  return pickColor(scalarValue.value, cfg.value.thresholds, 'var(--astro-text-primary)');
 });
 </script>
 
 <template>
   <div class="flex h-full w-full flex-col items-stretch justify-between p-3 text-center">
-    <p class="text-xs text-[color:var(--astro-text-secondary)]">
+    <p
+      v-if="cfg.title"
+      class="text-[length:var(--fs-xs)] text-[color:var(--astro-text-secondary)]"
+    >
       {{ cfg.title }}
     </p>
-    <div
-      class="flex flex-1 items-center justify-center gap-1 font-mono"
-      :style="{ color: valueColor }"
-    >
-      <span class="astro-mono-num text-[clamp(1.6rem,5vw,3.5rem)] font-semibold leading-none">{{ display }}</span>
-      <span
-        v-if="unit"
-        class="text-base text-[color:var(--astro-text-secondary)]"
-      >{{ unit }}</span>
+    <div class="flex flex-1 items-center justify-center">
+      <Metric
+        :value="scalarValue"
+        :unit="unit || undefined"
+        :precision="cfg.precision"
+        :size="metricSize"
+        :color="valueColor"
+      />
     </div>
     <div
       v-if="errorMsg"
-      class="truncate rounded bg-red-700/40 px-2 py-1 text-[10px] text-red-100"
+      class="truncate rounded bg-red-700/40 px-2 py-1 text-[length:var(--fs-xs)] text-red-100"
       :title="errorMsg"
     >
       {{ errorMsg }}

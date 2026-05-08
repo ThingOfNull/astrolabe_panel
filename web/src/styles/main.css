@@ -2,6 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
+@import './tokens.css';
+
 :root,
 :root[data-theme='dark'] {
   --astro-bg-base: #060a10;
@@ -80,9 +82,11 @@ body {
   backdrop-filter: blur(20px) saturate(170%);
   -webkit-backdrop-filter: blur(20px) saturate(170%);
   border: 1px solid var(--astro-glass-border);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
+  /* Compose elev-1 with the optional accent glow. glow is kept independent so
+     themes can disable it without losing base shadow depth. */
   box-shadow:
-    inset 0 1px 0 var(--astro-glass-highlight),
+    var(--elev-1),
     var(--astro-glass-shadow),
     var(--astro-glass-glow);
 }
@@ -92,7 +96,7 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 0.5rem;
+  border-radius: var(--radius-sm);
   transition:
     transform 0.18s ease,
     border-color 0.18s ease,

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 
+import { getEvents } from '@/api/events';
 import { getRpc } from '@/api/jsonrpc';
 import type { DataSourceView, MetricTree } from '@/api/types';
 
@@ -37,7 +38,7 @@ export const useDataSourceStore = defineStore('datasources', () => {
 
   async function create(input: Partial<DataSourceView>): Promise<DataSourceView> {
     const out = await getRpc().call<DataSourceView>('datasource.create', input as Record<string, unknown>);
-    items.value = [...items.value, out];
+    upsertLocal(out);
     return out;
   }
 
@@ -46,15 +47,14 @@ export const useDataSourceStore = defineStore('datasources', () => {
       id,
       ...patch,
     } as Record<string, unknown>);
-    items.value = items.value.map((d) => (d.id === id ? out : d));
+    upsertLocal(out);
     delete trees.value[id];
     return out;
   }
 
   async function remove(id: number): Promise<void> {
     await getRpc().call('datasource.delete', { id });
-    items.value = items.value.filter((d) => d.id !== id);
-    delete trees.value[id];
+    removeLocal(id);
   }
 
   async function testConnect(payload: Record<string, unknown>): Promise<{ ok: boolean; error?: string }> {
@@ -68,6 +68,39 @@ export const useDataSourceStore = defineStore('datasources', () => {
     const r = await getRpc().call<{ tree: MetricTree }>('datasource.discover', { id });
     trees.value = { ...trees.value, [id]: r.tree };
     return r.tree;
+  }
+
+  function upsertLocal(d: DataSourceView): void {
+    const idx = items.value.findIndex((x) => x.id === d.id);
+    if (idx >= 0) {
+      const next = items.value.slice();
+      next[idx] = d;
+      items.value = next;
+    } else {
+      items.value = [...items.value, d];
+    }
+  }
+
+  function removeLocal(id: number): void {
+    items.value = items.value.filter((d) => d.id !== id);
+    delete trees.value[id];
+  }
+
+  /**
+   * SSE: incoming upsert/delete mutations from other clients or server-side
+   * housekeeping.
+   */
+  function subscribeEvents(): () => void {
+    return getEvents().on('datasource.changed', (payload) => {
+      if (!payload) return;
+      if (payload.op === 'delete') {
+        removeLocal(payload.id);
+        return;
+      }
+      if (payload.op === 'upsert' && payload.view && isDataSource(payload.view)) {
+        upsertLocal(payload.view);
+      }
+    });
   }
 
   const byId = computed(() => (id: number): DataSourceView | undefined =>
@@ -88,8 +121,13 @@ export const useDataSourceStore = defineStore('datasources', () => {
     testConnect,
     discover,
     byId,
+    subscribeEvents,
   };
 });
+
+function isDataSource(v: unknown): v is DataSourceView {
+  return !!v && typeof v === 'object' && 'id' in (v as Record<string, unknown>) && 'type' in (v as Record<string, unknown>);
+}
 
 function format(err: unknown): string {
   if (err && typeof err === 'object' && 'message' in err) {

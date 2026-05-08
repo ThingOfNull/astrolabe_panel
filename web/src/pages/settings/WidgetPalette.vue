@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { Icon } from '@iconify/vue';
+import { useI18n } from 'vue-i18n';
 
 import { palette } from '@/widgets/registry';
+
+const { t } = useI18n();
 
 function onDragStart(e: DragEvent, type: string, w: number, h: number): void {
   if (!e.dataTransfer) return;
@@ -14,7 +17,7 @@ function onDragStart(e: DragEvent, type: string, w: number, h: number): void {
 <template>
   <div class="space-y-3">
     <p class="text-xs text-[color:var(--astro-text-secondary)]">
-      把组件拖到左侧画布上即可放置。
+      {{ t('palette.emptyHint') }}
     </p>
     <ul class="space-y-2">
       <li
@@ -32,10 +35,10 @@ function onDragStart(e: DragEvent, type: string, w: number, h: number): void {
         />
         <div class="flex-1">
           <div class="text-sm font-medium">
-            {{ entry.label }}
+            {{ t(entry.labelKey) }}
           </div>
           <div class="text-xs text-[color:var(--astro-text-secondary)]">
-            {{ entry.description }}
+            {{ t(entry.descriptionKey) }}
           </div>
         </div>
       </li>

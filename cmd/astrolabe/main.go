@@ -1,7 +1,7 @@
 // Astrolabe panel backend entrypoint.
 //
-// Startup: parse flags, load config, open store and services, register JSON-RPC,
-// listen for HTTP + WebSocket, shut down on SIGINT/SIGTERM.
+// Startup: parse flags, load config, open store and services, register JSON-RPC
+// over HTTP, spin up the SSE hub, listen, shut down on SIGINT/SIGTERM.
 package main
 
 import (
@@ -12,7 +12,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"sort"
 	"syscall"
 	"time"
 
@@ -28,11 +27,12 @@ import (
 	"astrolabe/internal/core/iconify"
 	"astrolabe/internal/core/metric"
 	"astrolabe/internal/core/upload"
+	"astrolabe/internal/events"
 	"astrolabe/internal/pkg/logging"
 	"astrolabe/internal/probe"
+	"astrolabe/internal/rpc"
+	"astrolabe/internal/rpc/handlers"
 	"astrolabe/internal/store"
-	"astrolabe/internal/ws"
-	"astrolabe/internal/ws/handlers"
 )
 
 // String set via -ldflags.
@@ -96,14 +96,21 @@ func run() error {
 		}
 	}()
 
+	// Event hub: must outlive RPC handlers and the probe scheduler so both can
+	// publish without racing on startup.
+	hub := events.NewHub()
+	defer hub.Close()
+
 	scheduler := probe.NewScheduler(st, probe.Options{
 		DefaultIntervalSec: cfg.Probe.DefaultIntervalSec,
 		DefaultTimeoutSec:  cfg.Probe.DefaultTimeoutSec,
 	})
+	scheduler.SetHub(hub)
 
 	dsManager := datasource.NewManager(st, adapter.DefaultRegistry)
 	defer dsManager.Close()
 	pipeline := metric.New(dsManager, st)
+	pipeline.SetHub(hub)
 	cleaner := metric.NewCleaner(st, cfg.Metric.RetentionMinutes, cfg.Metric.CleanupIntervalMinutes)
 
 	iconifyProxy := iconify.New(cfg.Iconify.Mirror, filepath.Join(cfg.Paths.DataDir, "iconify_cache"), logger)
@@ -112,24 +119,22 @@ func run() error {
 		return fmt.Errorf("init uploader: %w", err)
 	}
 
-	registry := ws.NewRegistry()
+	registry := rpc.NewRegistry()
 	handlers.RegisterSystem(registry)
-	handlers.RegisterBoard(registry, st)
-	handlers.RegisterWidget(registry, st)
+	handlers.RegisterBoard(registry, st, hub)
+	handlers.RegisterWidget(registry, st, hub)
 	handlers.RegisterProbe(registry, scheduler)
-	handlers.RegisterDataSource(registry, st, dsManager)
+	handlers.RegisterDataSource(registry, st, dsManager, hub)
 	handlers.RegisterMetric(registry, pipeline)
 	handlers.RegisterIconify(registry, iconifyProxy)
 
-	methodList := registry.Methods()
-	sort.Strings(methodList)
-	logger.Info("rpc methods registered", "methods", methodList)
+	logger.Info("rpc methods registered", "methods", registry.Methods())
 	logger.Info("data source adapters registered", "types", adapter.DefaultRegistry.Types())
 
-	wsServer := ws.NewServer(registry)
 	router, err := api.New(api.Options{
 		Logger:    logger,
-		WS:        wsServer,
+		Registry:  registry,
+		Events:    hub,
 		Build:     api.BuildInfo{Version: version, Commit: commit},
 		UploadDir: cfg.Paths.UploadDir,
 		Uploader:  uploader,

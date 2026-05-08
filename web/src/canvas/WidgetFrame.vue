@@ -296,6 +296,11 @@ function onClick(e: MouseEvent): void {
       width: `${widget.w * basePx}px`,
       height: `${widget.h * basePx}px`,
       zIndex: widget.z_index,
+      // Group-drag offset: Canvas writes --wf-dx/--wf-dy on selected followers
+      // and we translate by them. CSS-only path avoids the previous DOM
+      // querySelectorAll + el.style.transform side effect, which bypassed Vue
+      // reactivity and broke a11y / transitions.
+      transform: 'translate(var(--wf-dx, 0px), var(--wf-dy, 0px))',
       ...chromeStyle,
     }"
     :data-widget-id="widget.id"

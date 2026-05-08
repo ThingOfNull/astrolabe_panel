@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 
 import type { Widget } from '@/canvas/types';
 
@@ -12,15 +13,22 @@ const props = defineProps<{
   interactive: boolean;
 }>();
 
+const { t } = useI18n();
+
 const cfg = computed<SmartLinkConfig>(() => {
   const c = (props.widget.config ?? {}) as Partial<SmartLinkConfig>;
+  // Resolve `display_mode` first; fall back to the legacy show_* triplet
+  // so existing widgets keep rendering. The triplet's "all-off" combination
+  // is silently coerced to title_url so we never produce an empty tile.
+  const mode = resolveDisplayMode(c);
   const def: SmartLinkConfig = {
-    title: c.title ?? '未命名',
+    title: c.title && c.title.length > 0 ? c.title : t('smartlink.defaultTitle'),
     url: c.url ?? '',
     layout: c.layout === 'vertical' ? 'vertical' : 'horizontal',
-    show_icon: c.show_icon !== false,
-    show_title: c.show_title !== false,
-    show_url: c.show_url !== false,
+    display_mode: mode,
+    show_icon: showIconOf(mode),
+    show_title: showTitleOf(mode),
+    show_url: showUrlOf(mode),
     title_style: { ...(c.title_style ?? {}) },
     url_style: { ...(c.url_style ?? {}) },
     open_in_new_tab: c.open_in_new_tab ?? true,
@@ -28,6 +36,42 @@ const cfg = computed<SmartLinkConfig>(() => {
   };
   return def;
 });
+
+function resolveDisplayMode(
+  c: Partial<SmartLinkConfig>,
+): NonNullable<SmartLinkConfig['display_mode']> {
+  if (
+    c.display_mode === 'icon_only' ||
+    c.display_mode === 'title_only' ||
+    c.display_mode === 'title_url' ||
+    c.display_mode === 'url_only'
+  ) {
+    return c.display_mode;
+  }
+  // Legacy triplet → enum.
+  const showI = c.show_icon !== false;
+  const showT = c.show_title !== false;
+  const showU = c.show_url !== false;
+  if (showT && showU) return 'title_url';
+  if (showT && !showU) return 'title_only';
+  if (!showT && showU) return 'url_only';
+  if (showI) return 'icon_only';
+  return 'title_url';
+}
+
+function showIconOf(m: SmartLinkConfig['display_mode']): boolean {
+  return m !== 'title_only' && m !== 'url_only' && m !== 'title_url'
+    ? true
+    : true; // icon stays visible alongside text by default
+}
+
+function showTitleOf(m: SmartLinkConfig['display_mode']): boolean {
+  return m === 'title_only' || m === 'title_url';
+}
+
+function showUrlOf(m: SmartLinkConfig['display_mode']): boolean {
+  return m === 'url_only' || m === 'title_url';
+}
 
 // Default grid footprint 12x8.
 const DEFAULT_W = 12;
