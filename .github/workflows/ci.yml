@@ -5,54 +5,81 @@ on:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  backend:
-    name: Backend (Go)
+  build:
+    name: Build & test
     runs-on: ubuntu-latest
+    env:
+      GOVERSION: '1.25.x'
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25.x'
-          cache: true
+          go-version: ${{ env.GOVERSION }}
+          cache-dependency-path: go.sum
 
-      - name: go vet
-        run: go vet ./...
-
-      - name: go test
-        run: go test ./... -count=1
-
-      - name: go build
-        run: go build -o /tmp/astrolabe ./cmd/astrolabe
-
-  frontend:
-    name: Frontend (Vue + Vite)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: web
-    steps:
-      - uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
 
-      - name: Install pnpm
-        run: npm install -g pnpm@10
-
-      - name: Install deps
+      - name: Frontend — install
+        working-directory: web
         run: pnpm install --frozen-lockfile
 
-      - name: Type check
-        run: pnpm type-check
+      - name: Frontend — type check
+        working-directory: web
+        run: pnpm run type-check
 
-      - name: Lint
-        run: pnpm lint
+      - name: Frontend — ESLint
+        working-directory: web
+        run: pnpm run lint
 
-      - name: Build
-        run: pnpm build
+      - name: Frontend — vite build (embed into internal/embed/dist)
+        working-directory: web
+        run: pnpm run build
+
+      - name: Backend — go vet
+        run: go vet ./...
+
+      - name: Backend — go test
+        run: go test ./... -count=1
+
+      - name: Backend — build single binary
+        run: |
+          set -eu
+          v="${GITHUB_REF_NAME}-ci.${GITHUB_RUN_NUMBER}"
+          c="$(printf '%.7s' "${GITHUB_SHA}")"
+          go build -trimpath \
+            -ldflags "-s -w -X main.version=${v} -X main.commit=${c}" \
+            -o astrolabe ./cmd/astrolabe
+
+      - name: Upload Linux amd64 artifact
+        if: >-
+          success() &&
+          github.event_name == 'push' &&
+          (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        uses: actions/upload-artifact@v4
+        with:
+          name: astrolabe-linux-amd64-${{ github.sha }}
+          path: astrolabe
+          retention-days: 14
