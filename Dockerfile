@@ -1,19 +1,26 @@
-# syntax=docker/dockerfile:1.7
+# Astrolabe（星盘面板）单容器镜像，仅依赖本 Dockerfile（多阶段构建）。
+# 腾讯云等流水线：构建上下文选仓库根目录，Dockerfile 路径填 Dockerfile 即可。
 #
-# Astrolabe（星盘面板）容器镜像。
-# 多阶段构建：
-#   1) web-builder：node 22，构建 Vite SPA 产物；
-#   2) go-builder ：go 1.25，编译嵌入 SPA 的单二进制 ./astrolabe；
-#   3) runtime    ：distroless/static，最小化运行时（静态二进制）。
+# 阶段：
+#   1) web-builder：Node 22 + pnpm，构建 Vite SPA；
+#   2) go-builder ：Go 1.25，编译嵌入 SPA 的静态二进制；
+#   3) runtime     ：Alpine，非 root 运行（避免依赖 gcr.io distroless，国内拉取更稳）。
 #
-# 容器内 HOME=/data，配置 / 数据 / 上传 全部落在 /data/.astrolabe_panel/。
-# 推荐运行：docker run -p 8080:8080 -v astrolabe-data:/data ghcr.io/<org>/astrolabe:latest
+# 数据与配置目录：容器内 HOME=/data，对应 /data/.astrolabe_panel/
+# 运行业务示例：
+#   docker run -p 8080:8080 -v astrolabe-data:/data <镜像名>
+#
+# 可选：私有化基础镜像时，在流水线里传 build-arg 覆盖（见文件底部 ARG）。
+
+# ---------- 可调基础镜像（腾讯云内网/镜像加速可在这里改 tag）----------
+ARG NODE_IMAGE=node:22-alpine
+ARG GO_IMAGE=golang:1.25-alpine
+ARG RUNTIME_IMAGE=alpine:3.21
 
 # ---------- 1) Web ----------
-FROM node:22-alpine AS web-builder
+FROM ${NODE_IMAGE} AS web-builder
 WORKDIR /src/web
 
-# 启用 Corepack -> pnpm
 RUN corepack enable
 
 COPY web/package.json web/pnpm-lock.yaml ./
@@ -24,7 +31,7 @@ COPY internal/embed/dist /src/internal/embed/dist
 RUN pnpm build
 
 # ---------- 2) Go ----------
-FROM golang:1.25-alpine AS go-builder
+FROM ${GO_IMAGE} AS go-builder
 RUN apk add --no-cache git build-base
 WORKDIR /src
 
@@ -41,18 +48,22 @@ RUN go build \
     -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT}" \
     -o /out/astrolabe ./cmd/astrolabe
 
-# ---------- 3) Runtime ----------
-FROM gcr.io/distroless/static-debian12:nonroot
+# ---------- 3) Runtime（Alpine：体积小、常见镜像源均有）----------
+FROM ${RUNTIME_IMAGE} AS runtime
+RUN apk add --no-cache ca-certificates tzdata \
+    && addgroup -g 65532 -S app \
+    && adduser -u 65532 -S -G app -h /data -D app
+
 WORKDIR /data
 
-USER nonroot:nonroot
+USER app:app
 ENV HOME=/data
 EXPOSE 8080
 VOLUME ["/data"]
 
-COPY --from=go-builder --chown=nonroot:nonroot /out/astrolabe /astrolabe
+COPY --from=go-builder --chown=65532:65532 /out/astrolabe /astrolabe
 
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
     CMD ["/astrolabe", "--version"]
 
 ENTRYPOINT ["/astrolabe"]
